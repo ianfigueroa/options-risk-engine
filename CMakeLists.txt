@@ -10,6 +10,7 @@ option(OPTIONS_BUILD_BENCHMARKS "Build benchmark executables" ON)
 
 add_library(options_core
   cpp/src/BlackScholes.cpp
+  cpp/src/Greeks.cpp
 )
 
 target_include_directories(options_core
@@ -25,6 +26,10 @@ target_link_libraries(options_cpp_tests PRIVATE options_core)
 enable_testing()
 add_test(NAME options_cpp_tests COMMAND options_cpp_tests)
 
+add_executable(options_greeks_tests cpp/tests/test_greeks.cpp)
+target_link_libraries(options_greeks_tests PRIVATE options_core)
+add_test(NAME options_greeks_tests COMMAND options_greeks_tests)
+
 if(OPTIONS_BUILD_BENCHMARKS)
   add_executable(price_many_options cpp/benchmarks/price_many_options.cpp)
   target_link_libraries(price_many_options PRIVATE options_core)
@@ -35,4 +40,3 @@ if(OPTIONS_BUILD_PYTHON)
   pybind11_add_module(_options_core python/options_lab/bindings/module.cpp)
   target_link_libraries(_options_core PRIVATE options_core)
 endif()
-
