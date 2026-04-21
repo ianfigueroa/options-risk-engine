@@ -11,6 +11,7 @@ option(OPTIONS_BUILD_BENCHMARKS "Build benchmark executables" ON)
 add_library(options_core
   cpp/src/BlackScholes.cpp
   cpp/src/Greeks.cpp
+  cpp/src/ImpliedVol.cpp
 )
 
 target_include_directories(options_core
@@ -29,6 +30,10 @@ add_test(NAME options_cpp_tests COMMAND options_cpp_tests)
 add_executable(options_greeks_tests cpp/tests/test_greeks.cpp)
 target_link_libraries(options_greeks_tests PRIVATE options_core)
 add_test(NAME options_greeks_tests COMMAND options_greeks_tests)
+
+add_executable(options_iv_tests cpp/tests/test_implied_vol.cpp)
+target_link_libraries(options_iv_tests PRIVATE options_core)
+add_test(NAME options_iv_tests COMMAND options_iv_tests)
 
 if(OPTIONS_BUILD_BENCHMARKS)
   add_executable(price_many_options cpp/benchmarks/price_many_options.cpp)
