@@ -16,6 +16,7 @@ add_library(options_core
   cpp/src/MonteCarlo.cpp
   cpp/src/Portfolio.cpp
   cpp/src/RiskEngine.cpp
+  cpp/src/VolSurface.cpp
 )
 
 target_include_directories(options_core
@@ -46,6 +47,10 @@ add_test(NAME options_portfolio_tests COMMAND options_portfolio_tests)
 add_executable(options_numerical_tests cpp/tests/test_numerical_models.cpp)
 target_link_libraries(options_numerical_tests PRIVATE options_core)
 add_test(NAME options_numerical_tests COMMAND options_numerical_tests)
+
+add_executable(options_surface_tests cpp/tests/test_vol_surface.cpp)
+target_link_libraries(options_surface_tests PRIVATE options_core)
+add_test(NAME options_surface_tests COMMAND options_surface_tests)
 
 if(OPTIONS_BUILD_BENCHMARKS)
   add_executable(price_many_options cpp/benchmarks/price_many_options.cpp)

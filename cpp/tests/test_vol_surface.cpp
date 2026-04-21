@@ -63,8 +63,8 @@ void test_bilinear_interpolation() {
 void test_out_of_range_inputs() {
     const options::VolSurface surface{grid_quotes()};
 
-    expect_throws("low strike", [&] { surface.interpolate(80.0, 0.75); });
-    expect_throws("high expiry", [&] { surface.interpolate(100.0, 2.0); });
+    expect_throws("low strike", [&] { (void)surface.interpolate(80.0, 0.75); });
+    expect_throws("high expiry", [&] { (void)surface.interpolate(100.0, 2.0); });
 }
 
 void test_suspicious_quote_detection() {
@@ -106,4 +106,3 @@ int main() {
     std::cerr << failures << " vol surface tests failed\n";
     return 1;
 }
-
