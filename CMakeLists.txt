@@ -12,6 +12,8 @@ add_library(options_core
   cpp/src/BlackScholes.cpp
   cpp/src/Greeks.cpp
   cpp/src/ImpliedVol.cpp
+  cpp/src/Portfolio.cpp
+  cpp/src/RiskEngine.cpp
 )
 
 target_include_directories(options_core
@@ -34,6 +36,10 @@ add_test(NAME options_greeks_tests COMMAND options_greeks_tests)
 add_executable(options_iv_tests cpp/tests/test_implied_vol.cpp)
 target_link_libraries(options_iv_tests PRIVATE options_core)
 add_test(NAME options_iv_tests COMMAND options_iv_tests)
+
+add_executable(options_portfolio_tests cpp/tests/test_portfolio_risk.cpp)
+target_link_libraries(options_portfolio_tests PRIVATE options_core)
+add_test(NAME options_portfolio_tests COMMAND options_portfolio_tests)
 
 if(OPTIONS_BUILD_BENCHMARKS)
   add_executable(price_many_options cpp/benchmarks/price_many_options.cpp)
