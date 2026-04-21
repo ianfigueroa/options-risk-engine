@@ -10,8 +10,10 @@ option(OPTIONS_BUILD_BENCHMARKS "Build benchmark executables" ON)
 
 add_library(options_core
   cpp/src/BlackScholes.cpp
+  cpp/src/BinomialTree.cpp
   cpp/src/Greeks.cpp
   cpp/src/ImpliedVol.cpp
+  cpp/src/MonteCarlo.cpp
   cpp/src/Portfolio.cpp
   cpp/src/RiskEngine.cpp
 )
@@ -40,6 +42,10 @@ add_test(NAME options_iv_tests COMMAND options_iv_tests)
 add_executable(options_portfolio_tests cpp/tests/test_portfolio_risk.cpp)
 target_link_libraries(options_portfolio_tests PRIVATE options_core)
 add_test(NAME options_portfolio_tests COMMAND options_portfolio_tests)
+
+add_executable(options_numerical_tests cpp/tests/test_numerical_models.cpp)
+target_link_libraries(options_numerical_tests PRIVATE options_core)
+add_test(NAME options_numerical_tests COMMAND options_numerical_tests)
 
 if(OPTIONS_BUILD_BENCHMARKS)
   add_executable(price_many_options cpp/benchmarks/price_many_options.cpp)
