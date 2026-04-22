@@ -12,6 +12,7 @@ add_library(options_core
   cpp/src/BlackScholes.cpp
   cpp/src/BinomialTree.cpp
   cpp/src/Greeks.cpp
+  cpp/src/HedgingSimulator.cpp
   cpp/src/ImpliedVol.cpp
   cpp/src/MonteCarlo.cpp
   cpp/src/Portfolio.cpp
@@ -51,6 +52,10 @@ add_test(NAME options_numerical_tests COMMAND options_numerical_tests)
 add_executable(options_surface_tests cpp/tests/test_vol_surface.cpp)
 target_link_libraries(options_surface_tests PRIVATE options_core)
 add_test(NAME options_surface_tests COMMAND options_surface_tests)
+
+add_executable(options_hedging_tests cpp/tests/test_hedging_simulator.cpp)
+target_link_libraries(options_hedging_tests PRIVATE options_core)
+add_test(NAME options_hedging_tests COMMAND options_hedging_tests)
 
 if(OPTIONS_BUILD_BENCHMARKS)
   add_executable(price_many_options cpp/benchmarks/price_many_options.cpp)
