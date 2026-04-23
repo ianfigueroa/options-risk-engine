@@ -1,4 +1,5 @@
 import { Activity, Calculator, LineChart, Play, RefreshCw, ShieldAlert } from 'lucide-react'
+import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type OptionKind = 'call' | 'put'
@@ -218,7 +219,7 @@ export default function App() {
         <div className="panel wide">
           <div className="panel-title">Stress Heatmap</div>
           <div className="heatmap">
-            {stress.map((row) => <div key={row.label} className="heat-cell" style={{ '--tone': `${Math.abs(row.pnl) / stressMax}` } as React.CSSProperties}><span>{row.label}</span><strong>{format(row.pnl, 2)}</strong></div>)}
+            {stress.map((row) => <div key={row.label} className="heat-cell" style={{ '--tone': `${Math.abs(row.pnl) / stressMax}` } as CSSProperties}><span>{row.label}</span><strong>{format(row.pnl, 2)}</strong></div>)}
           </div>
         </div>
 
@@ -240,4 +241,3 @@ export default function App() {
     </main>
   )
 }
-
