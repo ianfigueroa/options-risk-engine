@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any, TypeVar
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from api.schemas import (
     HedgingConfigSchema,
@@ -20,6 +21,13 @@ from api.schemas import (
 from options_lab import analytics as ol
 
 app = FastAPI(title="Options Risk Engine API", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["content-type"],
+)
 T = TypeVar("T")
 
 
@@ -142,4 +150,3 @@ def vol_surface(payload: VolSurfaceRequest) -> dict[str, Any]:
         "suspicious_quotes": surface.detect_suspicious_quotes(),
         "arbitrage_warnings": surface.arbitrage_warnings(),
     }
-
