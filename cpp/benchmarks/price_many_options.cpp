@@ -1,10 +1,16 @@
 #include "options/BlackScholes.hpp"
 
+#include <cstdlib>
 #include <chrono>
 #include <iostream>
 
-int main() {
-    constexpr int contracts{100000};
+int main(const int argc, char** argv) {
+    const int contracts = argc > 1 ? std::atoi(argv[1]) : 100000;
+    if (contracts <= 0) {
+        std::cerr << "contract count must be positive\n";
+        return 1;
+    }
+
     const options::MarketData market{100.0, 0.04, 0.01, 0.22};
 
     double checksum{0.0};
@@ -27,4 +33,3 @@ int main() {
               << " elapsed_ms=" << elapsed
               << " checksum=" << checksum << '\n';
 }
-
