@@ -1,5 +1,4 @@
-import { Activity, Calculator, LineChart, Play, RefreshCw, ShieldAlert } from 'lucide-react'
-import type { CSSProperties } from 'react'
+import { Play, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type OptionKind = 'call' | 'put'
@@ -23,20 +22,30 @@ type Greeks = {
 
 type StressRow = {
   label: string
+  scenario_value?: number
   pnl: number
 }
 
 type HedgeResult = {
+  terminal_spot: number
   hedging_error: number
   transaction_costs: number
   spot_path: number[]
   delta_path: number[]
 }
 
+type SurfaceResult = {
+  interpolated_vol: number
+  quote_count: number
+  suspicious_quotes: unknown[]
+  arbitrage_warnings: string[]
+}
+
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
 const defaultGreeks: Greeks = { delta: 0, gamma: 0, vega: 0, theta: 0, rho: 0 }
 const fallbackHedge: HedgeResult = {
+  terminal_spot: 102,
   hedging_error: 0,
   transaction_costs: 0,
   spot_path: [100, 101, 99, 103, 102],
@@ -77,6 +86,10 @@ function format(value: number, digits = 4) {
   return Number.isFinite(value) ? value.toFixed(digits) : '-'
 }
 
+function percent(value: number, digits = 2) {
+  return `${format(value * 100, digits)}%`
+}
+
 function sparkline(values: number[]) {
   if (values.length < 2) return ''
   const min = Math.min(...values)
@@ -89,6 +102,11 @@ function sparkline(values: number[]) {
       return `${x},${y}`
     })
     .join(' ')
+}
+
+function minMax(values: number[]) {
+  if (values.length === 0) return { min: 0, max: 0 }
+  return { min: Math.min(...values), max: Math.max(...values) }
 }
 
 export default function App() {
@@ -109,6 +127,7 @@ export default function App() {
   const [hedge, setHedge] = useState<HedgeResult>(fallbackHedge)
   const [surfaceVol, setSurfaceVol] = useState(0)
   const [quoteCount, setQuoteCount] = useState(0)
+  const [surfaceWarnings, setSurfaceWarnings] = useState(0)
   const [status, setStatus] = useState('API idle')
   const [loading, setLoading] = useState(false)
 
@@ -139,7 +158,7 @@ export default function App() {
         ...basePayload,
         config: { steps: 60, rebalance_interval: 2, seed: 12, transaction_cost_rate: 0.001 },
       })
-      const surfaceResponse = await postJson<{ interpolated_vol: number; quote_count: number }>('/vol-surface', {
+      const surfaceResponse = await postJson<SurfaceResult>('/vol-surface', {
         spot: form.spot,
         expiries: [0.25, 0.5, 1, 2],
         strikes: [form.spot * 0.8, form.spot * 0.9, form.spot, form.spot * 1.1, form.spot * 1.2],
@@ -156,6 +175,7 @@ export default function App() {
       setHedge(hedgeResponse)
       setSurfaceVol(surfaceResponse.interpolated_vol)
       setQuoteCount(surfaceResponse.quote_count)
+      setSurfaceWarnings(surfaceResponse.suspicious_quotes.length + surfaceResponse.arbitrage_warnings.length)
       setStatus('API live')
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'API unavailable')
@@ -168,14 +188,20 @@ export default function App() {
     void runAnalytics()
   }, [runAnalytics])
 
-  const stressMax = Math.max(1, ...stress.map((row) => Math.abs(row.pnl)))
+  const intrinsic =
+    form.kind === 'call' ? Math.max(form.spot - form.strike, 0) : Math.max(form.strike - form.spot, 0)
+  const timeValue = Math.max(price - intrinsic, 0)
+  const forward = form.spot * Math.exp(form.rate * form.expiry)
+  const breakeven = form.kind === 'call' ? form.strike + price : form.strike - price
+  const moneyness = form.spot / form.strike
+  const hedgeRange = minMax(hedge.spot_path)
 
   return (
     <main className="shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">Options Risk Engine</p>
-          <h1>Vol Surface Lab</h1>
+          <h1>Options Risk Engine</h1>
+          <p className="subtitle">Pricing, Greeks, implied volatility, stress testing, and hedging simulation.</p>
         </div>
         <button className="run-button" onClick={runAnalytics} disabled={loading} title="Run analytics">
           {loading ? <RefreshCw className="spin" size={18} /> : <Play size={18} />}
@@ -185,49 +211,74 @@ export default function App() {
 
       <section className="grid">
         <div className="panel controls">
-          <div className="panel-title"><Calculator size={18} /> Pricing Inputs</div>
+          <div className="panel-title">Inputs</div>
           <label>Type<select value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value as OptionKind })}><option value="call">Call</option><option value="put">Put</option></select></label>
           <label>Spot<input type="number" value={form.spot} onChange={(event) => setForm({ ...form, spot: Number(event.target.value) })} /></label>
           <label>Strike<input type="number" value={form.strike} onChange={(event) => setForm({ ...form, strike: Number(event.target.value) })} /></label>
-          <label>Expiry<input type="number" step="0.05" value={form.expiry} onChange={(event) => setForm({ ...form, expiry: Number(event.target.value) })} /></label>
+          <label>Expiry years<input type="number" step="0.05" value={form.expiry} onChange={(event) => setForm({ ...form, expiry: Number(event.target.value) })} /></label>
           <label>Rate<input type="number" step="0.005" value={form.rate} onChange={(event) => setForm({ ...form, rate: Number(event.target.value) })} /></label>
-          <label>Vol<input type="number" step="0.01" value={form.volatility} onChange={(event) => setForm({ ...form, volatility: Number(event.target.value) })} /></label>
-          <div className="assumptions"><ShieldAlert size={16} /> European BS, continuous rates, no discrete dividends</div>
+          <label>Volatility<input type="number" step="0.01" value={form.volatility} onChange={(event) => setForm({ ...form, volatility: Number(event.target.value) })} /></label>
+          <div className="note">Model: European Black-Scholes, continuous rates, no discrete dividends.</div>
         </div>
 
-        <div className="panel hero-metric">
-          <div className="panel-title"><Activity size={18} /> Live Valuation</div>
-          <div className="price">${format(price, 4)}</div>
-          <div className="metric-row"><span>Implied vol</span><strong>{format(iv * 100, 2)}%</strong></div>
+        <div className="panel span-2">
+          <div className="panel-title">Option summary</div>
+          <div className="summary-grid">
+            <div><span>Price</span><strong>${format(price, 4)}</strong></div>
+            <div><span>Implied vol</span><strong>{percent(iv)}</strong></div>
+            <div><span>Intrinsic</span><strong>${format(intrinsic, 4)}</strong></div>
+            <div><span>Time value</span><strong>${format(timeValue, 4)}</strong></div>
+            <div><span>Moneyness S/K</span><strong>{format(moneyness, 4)}</strong></div>
+            <div><span>Forward</span><strong>{format(forward, 4)}</strong></div>
+            <div><span>Breakeven</span><strong>{format(breakeven, 4)}</strong></div>
+            <div><span>API status</span><strong>{status}</strong></div>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-title">Surface query</div>
+          <div className="metric-row"><span>Interpolated IV</span><strong>{percent(surfaceVol)}</strong></div>
+          <div className="metric-row"><span>Query point</span><strong>K {format(form.strike, 2)} / T {format(form.expiry, 2)}</strong></div>
+          <div className="metric-row"><span>Quote grid</span><strong>{quoteCount} quotes</strong></div>
+          <div className="metric-row"><span>Surface warnings</span><strong>{surfaceWarnings}</strong></div>
           <div className="metric-row"><span>Status</span><strong>{status}</strong></div>
         </div>
 
         <div className="panel">
-          <div className="panel-title"><LineChart size={18} /> Greeks</div>
-          <div className="greek-grid">
-            {Object.entries(greeks).map(([key, value]) => <div key={key}><span>{key}</span><strong>{format(value)}</strong></div>)}
-          </div>
+          <div className="panel-title">Option Greeks</div>
+          <MetricTable rows={Object.entries(greeks).map(([key, value]) => [key, format(value)])} />
         </div>
 
         <div className="panel">
           <div className="panel-title">Portfolio</div>
-          <table><tbody><tr><td>Long calls</td><td>10</td></tr><tr><td>Short 95% puts</td><td>-4</td></tr><tr><td>Underlying</td><td>25</td></tr><tr><td>Cash</td><td>-500</td></tr></tbody></table>
-          <div className="metric-row"><span>Value</span><strong>${format(portfolioValue, 2)}</strong></div>
-          <div className="metric-row"><span>Delta</span><strong>{format(portfolioGreeks.delta, 3)}</strong></div>
-        </div>
-
-        <div className="panel wide">
-          <div className="panel-title">Stress Heatmap</div>
-          <div className="heatmap">
-            {stress.map((row) => <div key={row.label} className="heat-cell" style={{ '--tone': `${Math.abs(row.pnl) / stressMax}` } as CSSProperties}><span>{row.label}</span><strong>{format(row.pnl, 2)}</strong></div>)}
-          </div>
+          <MetricTable rows={[
+            ['Long selected option', '10'],
+            ['Short 95% strike put', '-4'],
+            ['Underlying shares', '25'],
+            ['Cash', '-500'],
+            ['Value', `$${format(portfolioValue, 2)}`],
+          ]} />
         </div>
 
         <div className="panel">
-          <div className="panel-title">Vol Surface</div>
-          <div className="surface-meter"><div style={{ width: `${Math.min(100, surfaceVol * 300)}%` }} /></div>
-          <div className="metric-row"><span>Interpolated vol</span><strong>{format(surfaceVol * 100, 2)}%</strong></div>
-          <div className="metric-row"><span>Quotes</span><strong>{quoteCount}</strong></div>
+          <div className="panel-title">Portfolio Greeks</div>
+          <MetricTable rows={Object.entries(portfolioGreeks).map(([key, value]) => [key, format(value)])} />
+        </div>
+
+        <div className="panel wide">
+          <div className="panel-title">Stress test PnL</div>
+          <table className="data-table">
+            <thead><tr><th>Scenario</th><th>Portfolio PnL</th><th>Scenario value</th></tr></thead>
+            <tbody>
+              {stress.map((row) => (
+                <tr key={row.label}>
+                  <td>{row.label}</td>
+                  <td className={row.pnl >= 0 ? 'positive' : 'negative'}>{format(row.pnl, 2)}</td>
+                  <td>{row.scenario_value === undefined ? '-' : format(row.scenario_value, 2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
 
         <div className="panel wide">
@@ -235,9 +286,25 @@ export default function App() {
           <svg viewBox="0 0 100 100" className="chart" role="img" aria-label="Hedging spot path">
             <polyline points={sparkline(hedge.spot_path)} />
           </svg>
-          <div className="metric-strip"><span>Error {format(hedge.hedging_error, 4)}</span><span>Costs {format(hedge.transaction_costs, 4)}</span><span>Rebalances {hedge.delta_path.length}</span></div>
+          <div className="summary-grid compact">
+            <div><span>Hedging error</span><strong>{format(hedge.hedging_error, 4)}</strong></div>
+            <div><span>Transaction costs</span><strong>{format(hedge.transaction_costs, 4)}</strong></div>
+            <div><span>Terminal spot</span><strong>{format(hedge.terminal_spot, 4)}</strong></div>
+            <div><span>Spot range</span><strong>{format(hedgeRange.min, 2)} - {format(hedgeRange.max, 2)}</strong></div>
+            <div><span>Rebalance samples</span><strong>{hedge.delta_path.length}</strong></div>
+          </div>
         </div>
       </section>
     </main>
+  )
+}
+
+function MetricTable({ rows }: { rows: Array<[string, string]> }) {
+  return (
+    <table className="metric-table">
+      <tbody>
+        {rows.map(([label, value]) => <tr key={label}><td>{label}</td><td>{value}</td></tr>)}
+      </tbody>
+    </table>
   )
 }
