@@ -23,6 +23,11 @@ struct ScenarioResult {
     double pnl{0.0};
 };
 
+struct ScenarioGreeksResult {
+    std::string label{};
+    Greeks greeks{};
+};
+
 ScenarioResult reprice_scenario(
     const Portfolio& portfolio,
     const MarketData& market,
@@ -32,7 +37,11 @@ std::vector<ScenarioResult> standard_stress_tests(
     const Portfolio& portfolio,
     const MarketData& market);
 
+std::vector<ScenarioGreeksResult> scenario_greeks(
+    const Portfolio& portfolio,
+    const MarketData& market,
+    const std::vector<Scenario>& scenarios);
+
 }  // namespace options
 
 #endif  // OPTIONS_RISK_ENGINE_HPP
-

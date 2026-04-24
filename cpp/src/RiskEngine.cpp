@@ -1,6 +1,7 @@
 #include "options/RiskEngine.hpp"
 
 #include "options/BlackScholes.hpp"
+#include "options/Greeks.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -37,6 +38,26 @@ double scenario_value(
             * black_scholes_price(decayed_contract(position.contract, scenario), shocked);
     }
     return value;
+}
+
+Greeks aggregate_scenario_greeks(
+    const Portfolio& portfolio,
+    const MarketData& market,
+    const Scenario& scenario) {
+    const auto shocked = shocked_market(market, scenario);
+    Greeks aggregate{};
+    aggregate.delta = portfolio.underlying_units();
+
+    for (const auto& position : portfolio.positions()) {
+        const auto contract = decayed_contract(position.contract, scenario);
+        const auto greeks = black_scholes_greeks(contract, shocked);
+        aggregate.delta += position.quantity * greeks.delta;
+        aggregate.gamma += position.quantity * greeks.gamma;
+        aggregate.vega += position.quantity * greeks.vega;
+        aggregate.theta += position.quantity * greeks.theta;
+        aggregate.rho += position.quantity * greeks.rho;
+    }
+    return aggregate;
 }
 
 }  // namespace
@@ -80,5 +101,19 @@ std::vector<ScenarioResult> standard_stress_tests(
     return results;
 }
 
-}  // namespace options
+std::vector<ScenarioGreeksResult> scenario_greeks(
+    const Portfolio& portfolio,
+    const MarketData& market,
+    const std::vector<Scenario>& scenarios) {
+    std::vector<ScenarioGreeksResult> rows{};
+    rows.reserve(scenarios.size());
+    for (const auto& scenario : scenarios) {
+        rows.push_back(ScenarioGreeksResult{
+            scenario.label,
+            aggregate_scenario_greeks(portfolio, market, scenario)
+        });
+    }
+    return rows;
+}
 
+}  // namespace options
