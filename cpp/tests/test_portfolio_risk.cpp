@@ -108,6 +108,29 @@ void test_standard_stress_suite() {
     expect_true("stress scenarios populated", results.size() >= 10);
 }
 
+void test_scenario_greeks_matrix() {
+    const auto md = market();
+    const auto portfolio = sample_portfolio();
+    const std::vector<options::Scenario> scenarios{
+        {"base", 0.0, 0.0, 0.0, 0.0},
+        {"spot up", 0.05, 0.0, 0.0, 0.0},
+        {"vol up", 0.0, 0.05, 0.0, 0.0}
+    };
+
+    const auto rows = options::scenario_greeks(portfolio, md, scenarios);
+
+    expect_true("scenario greeks count", rows.size() == scenarios.size());
+    expect_true("base label preserved", rows.front().label == "base");
+    expect_near("base scenario delta",
+        rows.front().greeks.delta,
+        portfolio.aggregate_greeks(md).delta,
+        1.0e-10);
+    expect_true("spot scenario changes delta",
+        std::fabs(rows[1].greeks.delta - rows.front().greeks.delta) > 1.0e-8);
+    expect_true("vol scenario changes vega",
+        std::fabs(rows[2].greeks.vega - rows.front().greeks.vega) > 1.0e-8);
+}
+
 }  // namespace
 
 int main() {
@@ -115,6 +138,7 @@ int main() {
     test_portfolio_greeks();
     test_scenario_repricing();
     test_standard_stress_suite();
+    test_scenario_greeks_matrix();
 
     if (failures == 0) {
         std::cout << "portfolio risk tests passed\n";
@@ -124,4 +148,3 @@ int main() {
     std::cerr << failures << " portfolio risk tests failed\n";
     return 1;
 }
-
