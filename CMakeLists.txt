@@ -63,7 +63,13 @@ if(OPTIONS_BUILD_BENCHMARKS)
 endif()
 
 if(OPTIONS_BUILD_PYTHON)
+  set(PYBIND11_FINDPYTHON ON)
+  find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
   find_package(pybind11 CONFIG REQUIRED)
   pybind11_add_module(_options_core python/options_lab/bindings/module.cpp)
   target_link_libraries(_options_core PRIVATE options_core)
+  set_target_properties(_options_core PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/options_lab/bindings
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python/options_lab/bindings
+  )
 endif()
