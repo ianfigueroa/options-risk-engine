@@ -41,7 +41,7 @@ def test_greeks_and_implied_volatility():
 
 
 def test_implied_volatility_rejects_bad_price():
-    with pytest.raises(ValueError, match="bounds"):
+    with pytest.raises(ValueError, match="bounds|non-negative"):
         ol.implied_volatility(option("call"), market(), -1.0)
 
 

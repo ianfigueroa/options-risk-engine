@@ -64,6 +64,15 @@ class Portfolio:
 
 
 @dataclass(frozen=True)
+class Scenario:
+    label: str
+    spot_shock: float = 0.0
+    vol_shock: float = 0.0
+    rate_shock: float = 0.0
+    time_decay: float = 0.0
+
+
+@dataclass(frozen=True)
 class VolQuote:
     strike: float
     expiry: float
@@ -94,3 +103,28 @@ class HedgingResult:
     spot_path: list[float]
     delta_path: list[float]
 
+
+@dataclass(frozen=True)
+class PathConfig:
+    paths: int = 10000
+    steps: int = 252
+    seed: int = 42
+    antithetic: bool = True
+
+
+@dataclass(frozen=True)
+class LocalVolModel:
+    base_volatility: float = 0.20
+    spot_slope: float = 0.0
+    time_slope: float = 0.0
+    min_volatility: float = 0.01
+    max_volatility: float = 2.0
+
+
+@dataclass(frozen=True)
+class HestonParams:
+    initial_variance: float = 0.04
+    long_run_variance: float = 0.04
+    mean_reversion: float = 2.0
+    vol_of_vol: float = 0.30
+    correlation: float = -0.50

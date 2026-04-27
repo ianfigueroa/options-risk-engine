@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from options_lab.analytics.pricing import black_scholes_greeks, black_scholes_price
-from options_lab.analytics.types import Greeks, MarketData, Portfolio
+from options_lab.analytics.types import Greeks, MarketData, Portfolio, Scenario
 
 
 def portfolio_value(portfolio: Portfolio, market: MarketData) -> float:
@@ -80,3 +80,33 @@ def standard_stress_tests(portfolio: Portfolio, market: MarketData) -> list[dict
         )
     return rows
 
+
+def scenario_greeks(
+    portfolio: Portfolio,
+    market: MarketData,
+    scenarios: list[Scenario],
+) -> list[dict[str, float | str]]:
+    rows: list[dict[str, float | str]] = []
+    for scenario in scenarios:
+        shocked = MarketData(
+            spot=market.spot * (1.0 + scenario.spot_shock),
+            rate=market.rate + scenario.rate_shock,
+            dividend_yield=market.dividend_yield,
+            volatility=max(0.0, market.volatility + scenario.vol_shock),
+        )
+        decayed_positions = [
+            replace(
+                position,
+                contract=replace(
+                    position.contract,
+                    time_to_expiry=max(0.0, position.contract.time_to_expiry - scenario.time_decay),
+                ),
+            )
+            for position in portfolio.positions
+        ]
+        greeks = portfolio_greeks(
+            replace(portfolio, positions=decayed_positions),
+            shocked,
+        )
+        rows.append({"label": scenario.label, **greeks.__dict__})
+    return rows
