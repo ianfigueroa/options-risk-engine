@@ -3,6 +3,8 @@
 
 #include <stdexcept>
 #include <string>
+#include <cstddef>
+#include <cstdint>
 
 namespace options {
 
@@ -41,6 +43,13 @@ struct Greeks {
 struct Position {
     OptionContract contract{};
     double quantity{1.0};
+};
+
+struct PathConfig {
+    std::size_t paths{10000};
+    std::size_t steps{252};
+    std::uint64_t seed{42};
+    bool antithetic{true};
 };
 
 class OptionsError : public std::runtime_error {
@@ -82,4 +91,3 @@ inline double intrinsic_value(const OptionContract& contract, const double spot)
 }  // namespace options
 
 #endif  // OPTIONS_TYPES_HPP
-

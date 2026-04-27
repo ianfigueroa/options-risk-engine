@@ -14,9 +14,11 @@ add_library(options_core
   cpp/src/Greeks.cpp
   cpp/src/HedgingSimulator.cpp
   cpp/src/ImpliedVol.cpp
+  cpp/src/LocalVolatility.cpp
   cpp/src/MonteCarlo.cpp
   cpp/src/Portfolio.cpp
   cpp/src/RiskEngine.cpp
+  cpp/src/StochasticVolatility.cpp
   cpp/src/VolSurface.cpp
 )
 
@@ -56,6 +58,10 @@ add_test(NAME options_surface_tests COMMAND options_surface_tests)
 add_executable(options_hedging_tests cpp/tests/test_hedging_simulator.cpp)
 target_link_libraries(options_hedging_tests PRIVATE options_core)
 add_test(NAME options_hedging_tests COMMAND options_hedging_tests)
+
+add_executable(options_advanced_vol_tests cpp/tests/test_advanced_vol_models.cpp)
+target_link_libraries(options_advanced_vol_tests PRIVATE options_core)
+add_test(NAME options_advanced_vol_tests COMMAND options_advanced_vol_tests)
 
 if(OPTIONS_BUILD_BENCHMARKS)
   add_executable(price_many_options cpp/benchmarks/price_many_options.cpp)
