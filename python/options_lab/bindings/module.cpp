@@ -46,6 +46,24 @@ PYBIND11_MODULE(_options_core, module) {
         .def_readwrite("theta", &options::Greeks::theta)
         .def_readwrite("rho", &options::Greeks::rho);
 
+    py::class_<options::Scenario>(module, "Scenario")
+        .def(py::init<>())
+        .def_readwrite("label", &options::Scenario::label)
+        .def_readwrite("spot_shock", &options::Scenario::spot_shock)
+        .def_readwrite("vol_shock", &options::Scenario::vol_shock)
+        .def_readwrite("rate_shock", &options::Scenario::rate_shock)
+        .def_readwrite("time_decay", &options::Scenario::time_decay);
+
+    py::class_<options::ScenarioResult>(module, "ScenarioResult")
+        .def_readwrite("label", &options::ScenarioResult::label)
+        .def_readwrite("base_value", &options::ScenarioResult::base_value)
+        .def_readwrite("scenario_value", &options::ScenarioResult::scenario_value)
+        .def_readwrite("pnl", &options::ScenarioResult::pnl);
+
+    py::class_<options::ScenarioGreeksResult>(module, "ScenarioGreeksResult")
+        .def_readwrite("label", &options::ScenarioGreeksResult::label)
+        .def_readwrite("greeks", &options::ScenarioGreeksResult::greeks);
+
     py::class_<options::Position>(module, "Position")
         .def(py::init<>())
         .def_readwrite("contract", &options::Position::contract)
@@ -119,6 +137,8 @@ PYBIND11_MODULE(_options_core, module) {
         py::arg("contract"), py::arg("market"), py::arg("config") = options::MonteCarloConfig{});
     module.def("simulate_delta_hedge", &options::simulate_delta_hedge,
         py::arg("contract"), py::arg("market"), py::arg("config") = options::HedgingConfig{});
+    module.def("standard_stress_tests", &options::standard_stress_tests);
+    module.def("scenario_greeks", &options::scenario_greeks);
     module.def("local_volatility", &options::local_volatility);
     module.def("local_vol_monte_carlo_price", &options::local_vol_monte_carlo_price,
         py::arg("contract"), py::arg("market"), py::arg("model"),
