@@ -65,6 +65,28 @@ def test_portfolio_and_stress_tests():
     assert any(row["label"] == "combined crash" for row in stresses)
 
 
+def test_scenario_greeks_matrix():
+    portfolio = ol.Portfolio(
+        positions=[ol.Position(option("call", 100.0), 10.0)],
+        underlying_units=5.0,
+    )
+    md = market(0.22)
+
+    rows = ol.scenario_greeks(
+        portfolio,
+        md,
+        [
+            ol.Scenario("base", 0.0, 0.0, 0.0, 0.0),
+            ol.Scenario("spot up", 0.05, 0.0, 0.0, 0.0),
+        ],
+    )
+
+    assert len(rows) == 2
+    assert rows[0]["label"] == "base"
+    assert rows[0]["delta"] == pytest.approx(ol.portfolio_greeks(portfolio, md).delta)
+    assert rows[1]["delta"] != pytest.approx(rows[0]["delta"])
+
+
 def test_vol_surface_interpolation_and_quote_checks():
     quotes = ol.synthetic_option_chain(spot=100.0, expiries=[0.5, 1.0], strikes=[90.0, 100.0, 110.0])
     surface = ol.VolSurface(quotes)
@@ -74,6 +96,44 @@ def test_vol_surface_interpolation_and_quote_checks():
     bad_quotes = quotes + [ol.VolQuote(strike=120.0, expiry=1.0, implied_vol=-0.1, bid=2.0, ask=1.0)]
     warnings = ol.VolSurface(bad_quotes).detect_suspicious_quotes()
     assert len(warnings) >= 1
+
+
+def test_csv_option_chain_loader(tmp_path):
+    chain = tmp_path / "chain.csv"
+    chain.write_text(
+        "strike,expiry,implied_vol,bid,ask\n"
+        "90,0.5,0.24,1.0,1.2\n"
+        "100,0.5,0.22,1.0,1.1\n",
+        encoding="utf-8",
+    )
+
+    quotes = ol.load_option_chain_csv(chain)
+
+    assert len(quotes) == 2
+    assert quotes[0].strike == 90.0
+    assert quotes[1].implied_vol == 0.22
+
+
+def test_local_and_stochastic_vol_prices_are_finite():
+    contract = option("call")
+    md = market(0.2)
+    path_config = ol.PathConfig(paths=5000, steps=30, seed=5)
+
+    local = ol.local_vol_monte_carlo_price(
+        contract,
+        md,
+        ol.LocalVolModel(base_volatility=0.2, spot_slope=0.15),
+        path_config,
+    )
+    stochastic = ol.stochastic_vol_monte_carlo_price(
+        contract,
+        md,
+        ol.HestonParams(initial_variance=0.04, long_run_variance=0.04),
+        path_config,
+    )
+
+    assert local > 0.0
+    assert stochastic > 0.0
 
 
 def test_hedging_simulation_outputs_path_and_costs():
@@ -91,3 +151,9 @@ def test_hedging_simulation_outputs_path_and_costs():
     assert result.transaction_costs > 0.0
     assert math.isfinite(result.hedging_error)
 
+
+def test_cpp_core_status_is_exposed():
+    status = ol.cpp_core_status()
+
+    assert set(status) == {"available", "backend"}
+    assert status["backend"] in {"cpp", "python"}
