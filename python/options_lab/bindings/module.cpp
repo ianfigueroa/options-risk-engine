@@ -3,8 +3,10 @@
 #include "options/Greeks.hpp"
 #include "options/HedgingSimulator.hpp"
 #include "options/ImpliedVol.hpp"
+#include "options/LocalVolatility.hpp"
 #include "options/MonteCarlo.hpp"
 #include "options/RiskEngine.hpp"
+#include "options/StochasticVolatility.hpp"
 #include "options/VolSurface.hpp"
 
 #include <pybind11/pybind11.h>
@@ -48,6 +50,29 @@ PYBIND11_MODULE(_options_core, module) {
         .def(py::init<>())
         .def_readwrite("contract", &options::Position::contract)
         .def_readwrite("quantity", &options::Position::quantity);
+
+    py::class_<options::PathConfig>(module, "PathConfig")
+        .def(py::init<>())
+        .def_readwrite("paths", &options::PathConfig::paths)
+        .def_readwrite("steps", &options::PathConfig::steps)
+        .def_readwrite("seed", &options::PathConfig::seed)
+        .def_readwrite("antithetic", &options::PathConfig::antithetic);
+
+    py::class_<options::LocalVolModel>(module, "LocalVolModel")
+        .def(py::init<>())
+        .def_readwrite("base_volatility", &options::LocalVolModel::base_volatility)
+        .def_readwrite("spot_slope", &options::LocalVolModel::spot_slope)
+        .def_readwrite("time_slope", &options::LocalVolModel::time_slope)
+        .def_readwrite("min_volatility", &options::LocalVolModel::min_volatility)
+        .def_readwrite("max_volatility", &options::LocalVolModel::max_volatility);
+
+    py::class_<options::HestonParams>(module, "HestonParams")
+        .def(py::init<>())
+        .def_readwrite("initial_variance", &options::HestonParams::initial_variance)
+        .def_readwrite("long_run_variance", &options::HestonParams::long_run_variance)
+        .def_readwrite("mean_reversion", &options::HestonParams::mean_reversion)
+        .def_readwrite("vol_of_vol", &options::HestonParams::vol_of_vol)
+        .def_readwrite("correlation", &options::HestonParams::correlation);
 
     py::class_<options::Portfolio>(module, "Portfolio")
         .def(py::init<>())
@@ -94,5 +119,11 @@ PYBIND11_MODULE(_options_core, module) {
         py::arg("contract"), py::arg("market"), py::arg("config") = options::MonteCarloConfig{});
     module.def("simulate_delta_hedge", &options::simulate_delta_hedge,
         py::arg("contract"), py::arg("market"), py::arg("config") = options::HedgingConfig{});
+    module.def("local_volatility", &options::local_volatility);
+    module.def("local_vol_monte_carlo_price", &options::local_vol_monte_carlo_price,
+        py::arg("contract"), py::arg("market"), py::arg("model"),
+        py::arg("config") = options::PathConfig{});
+    module.def("stochastic_vol_monte_carlo_price", &options::stochastic_vol_monte_carlo_price,
+        py::arg("contract"), py::arg("market"), py::arg("params"),
+        py::arg("config") = options::PathConfig{});
 }
-
