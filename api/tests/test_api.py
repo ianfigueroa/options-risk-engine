@@ -95,4 +95,34 @@ def test_vol_surface_endpoint():
     body = response.json()
     assert body["interpolated_vol"] > 0.0
     assert body["quote_count"] == 6
+    assert len(body["smile"]) == 3
+    assert len(body["term_structure"]) == 2
 
+
+def test_scenario_greeks_endpoint():
+    payload = {
+        "positions": [
+            {"option": {"kind": "call", "strike": 100.0, "time_to_expiry": 1.0}, "quantity": 10.0},
+        ],
+        "underlying_units": 5.0,
+        "market": {"spot": 100.0, "rate": 0.04, "dividend_yield": 0.0, "volatility": 0.22},
+    }
+
+    response = client.post("/scenario-greeks", json=payload)
+
+    assert response.status_code == 200
+    rows = response.json()["scenarios"]
+    assert len(rows) >= 3
+    assert {"label", "delta", "gamma", "vega", "theta", "rho"} <= set(rows[0])
+
+
+def test_model_prices_endpoint():
+    response = client.post("/model-prices", json=option_payload())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["black_scholes"] > 0.0
+    assert body["binomial"] > 0.0
+    assert body["monte_carlo"] > 0.0
+    assert body["local_vol"] > 0.0
+    assert body["stochastic_vol"] > 0.0
