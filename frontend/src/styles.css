@@ -207,7 +207,10 @@ th:last-child {
   font-variant-numeric: tabular-nums;
 }
 .data-table td:nth-child(2),
-.data-table td:nth-child(3) {
+.data-table td:nth-child(3),
+.data-table td:nth-child(4),
+.data-table td:nth-child(5),
+.data-table td:nth-child(6) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -231,6 +234,44 @@ th:last-child {
   stroke-linejoin: round;
   stroke-width: 1.7;
 }
+.chart-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.mini-chart {
+  padding: 10px;
+  border: 1px solid #2b3036;
+  border-radius: 4px;
+  background: #121519;
+}
+.mini-title {
+  margin-bottom: 8px;
+  color: #f0f2f5;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.mini-chart svg {
+  width: 100%;
+  height: 120px;
+  border: 1px solid #2b3036;
+  background: #101215;
+}
+.mini-chart polyline {
+  fill: none;
+  stroke: #d5dbe3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+.axis-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+  color: #9da5af;
+  font-size: 0.75rem;
+}
 @media (max-width: 1160px) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -248,6 +289,9 @@ th:last-child {
   .controls,
   .summary-grid,
   .summary-grid.compact {
+    grid-template-columns: 1fr;
+  }
+  .chart-pair {
     grid-template-columns: 1fr;
   }
   .wide,
