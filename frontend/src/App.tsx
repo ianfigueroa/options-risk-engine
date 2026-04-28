@@ -128,6 +128,13 @@ function minMax(values: number[]) {
   return { min: Math.min(...values), max: Math.max(...values) }
 }
 
+function stressTone(pnl: number, maxAbsPnl: number) {
+  const strength = Math.min(1, Math.abs(pnl) / Math.max(maxAbsPnl, 1))
+  if (pnl > 0) return `rgba(68, 139, 84, ${0.18 + strength * 0.42})`
+  if (pnl < 0) return `rgba(160, 73, 73, ${0.18 + strength * 0.42})`
+  return '#20242a'
+}
+
 export default function App() {
   const [form, setForm] = useState<FormState>({
     kind: 'call',
@@ -231,6 +238,7 @@ export default function App() {
   const breakeven = form.kind === 'call' ? form.strike + price : form.strike - price
   const moneyness = form.spot / form.strike
   const hedgeRange = minMax(hedge.spot_path)
+  const maxStressPnl = Math.max(1, ...stress.map((row) => Math.abs(row.pnl)))
 
   return (
     <main className="shell">
@@ -315,7 +323,19 @@ export default function App() {
         </div>
 
         <div className="panel wide">
-          <div className="panel-title">Stress test PnL</div>
+          <div className="panel-title">Stress heatmap and PnL</div>
+          <div className="stress-heatmap">
+            {stress.map((row) => (
+              <div
+                key={row.label}
+                className="stress-cell"
+                style={{ backgroundColor: stressTone(row.pnl, maxStressPnl) }}
+              >
+                <span>{row.label}</span>
+                <strong>{format(row.pnl, 2)}</strong>
+              </div>
+            ))}
+          </div>
           <table className="data-table">
             <thead><tr><th>Scenario</th><th>Portfolio PnL</th><th>Scenario value</th></tr></thead>
             <tbody>
@@ -331,7 +351,7 @@ export default function App() {
         </div>
 
         <div className="panel wide">
-          <div className="panel-title">Scenario Greeks</div>
+          <div className="panel-title">Scenario Greeks matrix</div>
           <table className="data-table">
             <thead><tr><th>Scenario</th><th>Delta</th><th>Gamma</th><th>Vega</th><th>Theta</th><th>Rho</th></tr></thead>
             <tbody>

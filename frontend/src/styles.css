@@ -214,6 +214,29 @@ th:last-child {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.stress-heatmap {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.stress-cell {
+  min-height: 54px;
+  padding: 8px;
+  border: 1px solid #303741;
+  border-radius: 3px;
+}
+.stress-cell span {
+  display: block;
+  margin-bottom: 8px;
+  color: #e0e4e9;
+  font-size: 0.76rem;
+}
+.stress-cell strong {
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
 .positive {
   color: #7fd18b;
 }
@@ -287,6 +310,7 @@ th:last-child {
   }
   .grid,
   .controls,
+  .stress-heatmap,
   .summary-grid,
   .summary-grid.compact {
     grid-template-columns: 1fr;
