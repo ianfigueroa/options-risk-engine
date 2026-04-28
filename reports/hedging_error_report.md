@@ -85,9 +85,8 @@ The single-path weekly result is not larger than daily in this seed, which is a 
 
 ## Limitations
 
-This report uses deterministic seeded examples, not a full statistical Monte Carlo distribution. The simulator does not yet model stochastic rates, borrow costs, discrete dividends, volatility clustering, exchange fees, market impact, or liquidity constraints.
+This report uses deterministic seeded examples, not a full statistical Monte Carlo distribution. The simulator does not yet model stochastic rates, borrow costs, discrete dividends, exchange fees, market impact, or liquidity constraints. The broader project now includes local-vol and stochastic-vol pricing experiments, but the hedging simulator still uses Black-Scholes delta as the hedge rule.
 
 ## Conclusion
 
 Discrete delta hedging is most stable when realized dynamics match the hedge model, transaction costs are low, and rebalancing is frequent. Volatility misspecification and jumps materially degrade replication. A production research extension should run thousands of paths per experiment and report quantiles, expected shortfall of hedging error, and turnover-adjusted performance.
-

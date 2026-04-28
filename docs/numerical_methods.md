@@ -25,3 +25,17 @@ The C++ and Python `VolSurface` classes use bilinear interpolation over strike a
 
 Monte Carlo and hedging simulation use deterministic seeds for repeatable tests. Hedging paths can include Bernoulli jump arrivals with lognormal jump sizes.
 
+## Advanced Volatility Simulation
+
+Local-vol and stochastic-vol prices are estimated with seeded Monte Carlo. The
+local-vol model evaluates volatility at each path step from current spot and
+elapsed time. The stochastic-vol model evolves correlated spot and variance
+shocks with full truncation:
+
+```text
+v_used = max(v, 0)
+v_next = max(0, v + kappa(theta-v_used)dt + eta sqrt(v_used) sqrt(dt) Z_v)
+```
+
+These are research-grade simulation tools, not calibrated production volatility
+model infrastructure.

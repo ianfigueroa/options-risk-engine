@@ -46,6 +46,8 @@ The API defaults to `http://127.0.0.1:8000`. The dashboard defaults to Vite on
 - `POST /implied-vol`
 - `POST /portfolio-risk`
 - `POST /stress-test`
+- `POST /scenario-greeks`
+- `POST /model-prices`
 - `POST /hedging-simulation`
 - `POST /vol-surface`
 
@@ -85,15 +87,18 @@ See `docs/benchmarks.md` for commands and Monte Carlo timings.
 
 ## Model Scope
 
-The initial production core focuses on equity-style European options under
-Black-Scholes assumptions, CRR binomial trees, Monte Carlo under GBM, and
-portfolio risk by repricing. Local volatility and stochastic volatility are
-documented as future extensions rather than implied by the current code.
+The core focuses on equity-style options with Black-Scholes, CRR binomial
+trees, GBM Monte Carlo, a parametric local-volatility Monte Carlo, and a
+Heston-style stochastic-volatility Monte Carlo. Portfolio risk is computed by
+full repricing, with separate scenario Greeks for shocked conditions.
 
 ## Limitations
 
 - No static-arbitrage surface calibration beyond basic quote diagnostics.
 - No discrete dividends, borrow curves, stochastic rates, or market impact.
+- Local volatility is parametric, not calibrated through Dupire inversion.
+- Stochastic volatility uses Euler full-truncation simulation, not production
+  Heston calibration or Fourier pricing.
 - Hedging experiments are deterministic examples unless extended to many paths.
 - The pybind11 module source is included; building it requires a local pybind11
   CMake package and a compatible compiler toolchain.

@@ -10,6 +10,11 @@ V = cash + underlying_units * S + sum(quantity_i * option_value_i)
 
 Aggregate Greeks are quantity-weighted option Greeks plus underlying delta.
 
+Scenario Greeks revalue those same Greeks under shocked spot, volatility, rate,
+and time-to-expiry assumptions. This is separate from stress PnL and helps
+explain whether a shock makes the portfolio more convex, more vega-exposed, or
+more rate-sensitive.
+
 ## Stress Testing
 
 Standard scenarios include:
@@ -33,4 +38,3 @@ cash_T + delta_T * S_T - option_payoff_T
 ```
 
 Discrete rebalancing, transaction costs, volatility misspecification, and jumps are expected to increase dispersion of hedging error.
-

@@ -34,7 +34,31 @@ American options are valued by maxing continuation value against intrinsic value
 
 The European Monte Carlo pricer samples exact GBM terminal spots and discounts average payoff. Antithetic variates reduce variance.
 
+## Local Volatility
+
+The local-volatility pricer is a Monte Carlo model with a simple parametric
+state-dependent volatility:
+
+```text
+sigma_local(S,t) = clamp(base + spot_slope * (S / S0 - 1) + time_slope * t)
+```
+
+It is useful for testing smile-sensitive path pricing, but it is not a calibrated
+Dupire model.
+
+## Stochastic Volatility
+
+The stochastic-volatility pricer uses Heston-style variance dynamics:
+
+```text
+dS_t = (r-q) S_t dt + sqrt(v_t) S_t dW_1
+dv_t = kappa(theta - v_t)dt + eta sqrt(v_t)dW_2
+corr(dW_1, dW_2) = rho
+```
+
+Simulation uses Euler full truncation to keep variance non-negative.
+
 ## Future Work
 
-Local volatility and stochastic volatility are documented placeholders. A production extension would calibrate Dupire local vol or Heston/SABR dynamics and add no-static-arbitrage surface calibration.
-
+A production extension would calibrate Dupire local vol or Heston/SABR
+dynamics to listed option chains and add stronger static-arbitrage constraints.
