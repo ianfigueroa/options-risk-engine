@@ -26,6 +26,16 @@ type StressRow = {
   pnl: number
 }
 
+type ScenarioGreekRow = Greeks & { label: string }
+
+type ModelPrices = {
+  black_scholes: number
+  binomial: number
+  monte_carlo: number
+  local_vol: number
+  stochastic_vol: number
+}
+
 type HedgeResult = {
   terminal_spot: number
   hedging_error: number
@@ -37,6 +47,8 @@ type HedgeResult = {
 type SurfaceResult = {
   interpolated_vol: number
   quote_count: number
+  smile: Array<{ strike: number; implied_vol: number }>
+  term_structure: Array<{ expiry: number; implied_vol: number }>
   suspicious_quotes: unknown[]
   arbitrage_warnings: string[]
 }
@@ -44,6 +56,13 @@ type SurfaceResult = {
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
 const defaultGreeks: Greeks = { delta: 0, gamma: 0, vega: 0, theta: 0, rho: 0 }
+const defaultModelPrices: ModelPrices = {
+  black_scholes: 0,
+  binomial: 0,
+  monte_carlo: 0,
+  local_vol: 0,
+  stochastic_vol: 0,
+}
 const fallbackHedge: HedgeResult = {
   terminal_spot: 102,
   hedging_error: 0,
@@ -118,16 +137,22 @@ export default function App() {
     rate: 0.05,
     volatility: 0.2,
   })
+  const [marketPrice, setMarketPrice] = useState(10.45)
   const [price, setPrice] = useState(0)
   const [iv, setIv] = useState(0)
+  const [manualIv, setManualIv] = useState(0)
+  const [modelPrices, setModelPrices] = useState<ModelPrices>(defaultModelPrices)
   const [greeks, setGreeks] = useState<Greeks>(defaultGreeks)
   const [portfolioValue, setPortfolioValue] = useState(0)
   const [portfolioGreeks, setPortfolioGreeks] = useState<Greeks>(defaultGreeks)
   const [stress, setStress] = useState<StressRow[]>([])
+  const [scenarioGreekRows, setScenarioGreekRows] = useState<ScenarioGreekRow[]>([])
   const [hedge, setHedge] = useState<HedgeResult>(fallbackHedge)
   const [surfaceVol, setSurfaceVol] = useState(0)
   const [quoteCount, setQuoteCount] = useState(0)
   const [surfaceWarnings, setSurfaceWarnings] = useState(0)
+  const [smile, setSmile] = useState<SurfaceResult['smile']>([])
+  const [termStructure, setTermStructure] = useState<SurfaceResult['term_structure']>([])
   const [status, setStatus] = useState('API idle')
   const [loading, setLoading] = useState(false)
 
@@ -143,6 +168,11 @@ export default function App() {
         ...basePayload,
         option_price: priceResponse.price,
       })
+      const manualIvResponse = await postJson<{ implied_volatility: number }>('/implied-vol', {
+        ...basePayload,
+        option_price: marketPrice,
+      }).catch(() => ({ implied_volatility: Number.NaN }))
+      const modelResponse = await postJson<ModelPrices>('/model-prices', basePayload)
       const portfolioPayload = {
         positions: [
           { option: basePayload.option, quantity: 10 },
@@ -154,6 +184,7 @@ export default function App() {
       }
       const portfolioResponse = await postJson<{ value: number; greeks: Greeks }>('/portfolio-risk', portfolioPayload)
       const stressResponse = await postJson<{ scenarios: StressRow[] }>('/stress-test', portfolioPayload)
+      const scenarioGreeksResponse = await postJson<{ scenarios: ScenarioGreekRow[] }>('/scenario-greeks', portfolioPayload)
       const hedgeResponse = await postJson<HedgeResult>('/hedging-simulation', {
         ...basePayload,
         config: { steps: 60, rebalance_interval: 2, seed: 12, transaction_cost_rate: 0.001 },
@@ -169,20 +200,25 @@ export default function App() {
       setPrice(priceResponse.price)
       setGreeks(greeksResponse)
       setIv(ivResponse.implied_volatility)
+      setManualIv(manualIvResponse.implied_volatility)
+      setModelPrices(modelResponse)
       setPortfolioValue(portfolioResponse.value)
       setPortfolioGreeks(portfolioResponse.greeks)
       setStress(stressResponse.scenarios)
+      setScenarioGreekRows(scenarioGreeksResponse.scenarios)
       setHedge(hedgeResponse)
       setSurfaceVol(surfaceResponse.interpolated_vol)
       setQuoteCount(surfaceResponse.quote_count)
       setSurfaceWarnings(surfaceResponse.suspicious_quotes.length + surfaceResponse.arbitrage_warnings.length)
+      setSmile(surfaceResponse.smile)
+      setTermStructure(surfaceResponse.term_structure)
       setStatus('API live')
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'API unavailable')
     } finally {
       setLoading(false)
     }
-  }, [basePayload, form.expiry, form.spot, form.strike])
+  }, [basePayload, form.expiry, form.spot, form.strike, marketPrice])
 
   useEffect(() => {
     void runAnalytics()
@@ -218,6 +254,7 @@ export default function App() {
           <label>Expiry years<input type="number" step="0.05" value={form.expiry} onChange={(event) => setForm({ ...form, expiry: Number(event.target.value) })} /></label>
           <label>Rate<input type="number" step="0.005" value={form.rate} onChange={(event) => setForm({ ...form, rate: Number(event.target.value) })} /></label>
           <label>Volatility<input type="number" step="0.01" value={form.volatility} onChange={(event) => setForm({ ...form, volatility: Number(event.target.value) })} /></label>
+          <label>Market price<input type="number" step="0.01" value={marketPrice} onChange={(event) => setMarketPrice(Number(event.target.value))} /></label>
           <div className="note">Model: European Black-Scholes, continuous rates, no discrete dividends.</div>
         </div>
 
@@ -225,7 +262,8 @@ export default function App() {
           <div className="panel-title">Option summary</div>
           <div className="summary-grid">
             <div><span>Price</span><strong>${format(price, 4)}</strong></div>
-            <div><span>Implied vol</span><strong>{percent(iv)}</strong></div>
+            <div><span>Model IV</span><strong>{percent(iv)}</strong></div>
+            <div><span>Market IV</span><strong>{percent(manualIv)}</strong></div>
             <div><span>Intrinsic</span><strong>${format(intrinsic, 4)}</strong></div>
             <div><span>Time value</span><strong>${format(timeValue, 4)}</strong></div>
             <div><span>Moneyness S/K</span><strong>{format(moneyness, 4)}</strong></div>
@@ -242,6 +280,17 @@ export default function App() {
           <div className="metric-row"><span>Quote grid</span><strong>{quoteCount} quotes</strong></div>
           <div className="metric-row"><span>Surface warnings</span><strong>{surfaceWarnings}</strong></div>
           <div className="metric-row"><span>Status</span><strong>{status}</strong></div>
+        </div>
+
+        <div className="panel span-2">
+          <div className="panel-title">Model prices</div>
+          <MetricTable rows={[
+            ['Black-Scholes', `$${format(modelPrices.black_scholes, 4)}`],
+            ['Binomial tree', `$${format(modelPrices.binomial, 4)}`],
+            ['Monte Carlo', `$${format(modelPrices.monte_carlo, 4)}`],
+            ['Local vol MC', `$${format(modelPrices.local_vol, 4)}`],
+            ['Stochastic vol MC', `$${format(modelPrices.stochastic_vol, 4)}`],
+          ]} />
         </div>
 
         <div className="panel">
@@ -282,6 +331,33 @@ export default function App() {
         </div>
 
         <div className="panel wide">
+          <div className="panel-title">Scenario Greeks</div>
+          <table className="data-table">
+            <thead><tr><th>Scenario</th><th>Delta</th><th>Gamma</th><th>Vega</th><th>Theta</th><th>Rho</th></tr></thead>
+            <tbody>
+              {scenarioGreekRows.map((row) => (
+                <tr key={row.label}>
+                  <td>{row.label}</td>
+                  <td>{format(row.delta, 3)}</td>
+                  <td>{format(row.gamma, 4)}</td>
+                  <td>{format(row.vega, 3)}</td>
+                  <td>{format(row.theta, 3)}</td>
+                  <td>{format(row.rho, 3)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="panel wide">
+          <div className="panel-title">Vol smile and term structure</div>
+          <div className="chart-pair">
+            <MiniLine title="Smile" xLabel="Strike" values={smile.map((point) => point.implied_vol)} labels={smile.map((point) => format(point.strike, 0))} />
+            <MiniLine title="Term" xLabel="Expiry" values={termStructure.map((point) => point.implied_vol)} labels={termStructure.map((point) => format(point.expiry, 2))} />
+          </div>
+        </div>
+
+        <div className="panel wide">
           <div className="panel-title">Delta Hedging</div>
           <svg viewBox="0 0 100 100" className="chart" role="img" aria-label="Hedging spot path">
             <polyline points={sparkline(hedge.spot_path)} />
@@ -306,5 +382,17 @@ function MetricTable({ rows }: { rows: Array<[string, string]> }) {
         {rows.map(([label, value]) => <tr key={label}><td>{label}</td><td>{value}</td></tr>)}
       </tbody>
     </table>
+  )
+}
+
+function MiniLine({ title, xLabel, values, labels }: { title: string; xLabel: string; values: number[]; labels: string[] }) {
+  return (
+    <div className="mini-chart">
+      <div className="mini-title">{title}</div>
+      <svg viewBox="0 0 100 50" role="img" aria-label={`${title} chart`}>
+        <polyline points={sparkline(values)} />
+      </svg>
+      <div className="axis-row"><span>{xLabel}</span><span>{labels[0] ?? '-'}</span><span>{labels[labels.length - 1] ?? '-'}</span></div>
+    </div>
   )
 }
