@@ -135,6 +135,16 @@ function stressTone(pnl: number, maxAbsPnl: number) {
   return '#20242a'
 }
 
+function modelRows(prices: ModelPrices): Array<[string, number]> {
+  return [
+    ['Black-Scholes', prices.black_scholes],
+    ['Binomial', prices.binomial],
+    ['Monte Carlo', prices.monte_carlo],
+    ['Local vol', prices.local_vol],
+    ['Stochastic vol', prices.stochastic_vol],
+  ]
+}
+
 export default function App() {
   const [form, setForm] = useState<FormState>({
     kind: 'call',
@@ -239,6 +249,19 @@ export default function App() {
   const moneyness = form.spot / form.strike
   const hedgeRange = minMax(hedge.spot_path)
   const maxStressPnl = Math.max(1, ...stress.map((row) => Math.abs(row.pnl)))
+  const greekBars: Array<[string, number]> = Object.entries(greeks).map(([key, value]) => [key, value])
+
+  function loadSampleTrade() {
+    setForm({
+      kind: 'call',
+      spot: 103,
+      strike: 105,
+      expiry: 0.75,
+      rate: 0.04,
+      volatility: 0.28,
+    })
+    setMarketPrice(9.15)
+  }
 
   return (
     <main className="shell">
@@ -263,6 +286,7 @@ export default function App() {
           <label>Rate<input type="number" step="0.005" value={form.rate} onChange={(event) => setForm({ ...form, rate: Number(event.target.value) })} /></label>
           <label>Volatility<input type="number" step="0.01" value={form.volatility} onChange={(event) => setForm({ ...form, volatility: Number(event.target.value) })} /></label>
           <label>Market price<input type="number" step="0.01" value={marketPrice} onChange={(event) => setMarketPrice(Number(event.target.value))} /></label>
+          <button className="secondary-button" type="button" onClick={loadSampleTrade}>Load sample trade</button>
           <div className="note">Model: European Black-Scholes, continuous rates, no discrete dividends.</div>
         </div>
 
@@ -292,6 +316,7 @@ export default function App() {
 
         <div className="panel span-2">
           <div className="panel-title">Model prices</div>
+          <BarChart rows={modelRows(modelPrices)} valuePrefix="$" />
           <MetricTable rows={[
             ['Black-Scholes', `$${format(modelPrices.black_scholes, 4)}`],
             ['Binomial tree', `$${format(modelPrices.binomial, 4)}`],
@@ -303,6 +328,7 @@ export default function App() {
 
         <div className="panel">
           <div className="panel-title">Option Greeks</div>
+          <BarChart rows={greekBars} digits={3} />
           <MetricTable rows={Object.entries(greeks).map(([key, value]) => [key, format(value)])} />
         </div>
 
@@ -402,6 +428,24 @@ function MetricTable({ rows }: { rows: Array<[string, string]> }) {
         {rows.map(([label, value]) => <tr key={label}><td>{label}</td><td>{value}</td></tr>)}
       </tbody>
     </table>
+  )
+}
+
+function BarChart({ rows, valuePrefix = '', digits = 2 }: { rows: Array<[string, number]>; valuePrefix?: string; digits?: number }) {
+  const maxAbs = Math.max(1e-8, ...rows.map(([, value]) => Math.abs(value)))
+  return (
+    <div className="bar-chart">
+      {rows.map(([label, value]) => {
+        const width = `${Math.max(4, Math.abs(value) / maxAbs * 100)}%`
+        return (
+          <div className="bar-row" key={label}>
+            <span>{label}</span>
+            <div className="bar-track"><div className={value >= 0 ? 'bar positive-bar' : 'bar negative-bar'} style={{ width }} /></div>
+            <strong>{valuePrefix}{format(value, digits)}</strong>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

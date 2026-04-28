@@ -58,6 +58,17 @@ h1 {
 .run-button:hover {
   background: #2b3037;
 }
+.secondary-button {
+  min-height: 36px;
+  border: 1px solid #3a414b;
+  border-radius: 4px;
+  color: #f2f4f6;
+  background: #171a1f;
+  cursor: pointer;
+}
+.secondary-button:hover {
+  background: #20242a;
+}
 .run-button:disabled {
   cursor: progress;
   opacity: 0.72;
@@ -206,6 +217,38 @@ th:last-child {
   color: #f2f4f6;
   font-variant-numeric: tabular-nums;
 }
+.bar-chart {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.bar-row {
+  display: grid;
+  grid-template-columns: 96px minmax(80px, 1fr) 74px;
+  align-items: center;
+  gap: 8px;
+  color: #aab2bd;
+  font-size: 0.78rem;
+}
+.bar-row strong {
+  color: #f2f4f6;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.bar-track {
+  height: 10px;
+  border: 1px solid #303741;
+  background: #101215;
+}
+.bar {
+  height: 100%;
+}
+.positive-bar {
+  background: #6ea778;
+}
+.negative-bar {
+  background: #b56d6d;
+}
 .data-table td:nth-child(2),
 .data-table td:nth-child(3),
 .data-table td:nth-child(4),
@@ -316,6 +359,9 @@ th:last-child {
     grid-template-columns: 1fr;
   }
   .chart-pair {
+    grid-template-columns: 1fr;
+  }
+  .bar-row {
     grid-template-columns: 1fr;
   }
   .wide,
