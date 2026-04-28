@@ -127,6 +127,48 @@ def stress_test(payload: PortfolioRequest) -> dict[str, list[dict[str, float | s
     return {"scenarios": scenarios}
 
 
+@app.post("/scenario-greeks")
+def scenario_greeks(payload: PortfolioRequest) -> dict[str, list[dict[str, float | str]]]:
+    scenarios = [
+        ol.Scenario("base", 0.0, 0.0, 0.0, 0.0),
+        ol.Scenario("spot up 5%", 0.05, 0.0, 0.0, 0.0),
+        ol.Scenario("spot down 5%", -0.05, 0.0, 0.0, 0.0),
+        ol.Scenario("vol up 5 points", 0.0, 0.05, 0.0, 0.0),
+        ol.Scenario("one week decay", 0.0, 0.0, 0.0, 7.0 / 365.0),
+    ]
+    rows = _safe(lambda: ol.scenario_greeks(_portfolio(payload), _market(payload.market), scenarios))
+    return {"scenarios": rows}
+
+
+@app.post("/model-prices")
+def model_prices(payload: PriceRequest) -> dict[str, float]:
+    option = _option(payload.option)
+    market = _market(payload.market)
+    paths = ol.PathConfig(paths=6000, steps=40, seed=31)
+    return _safe(
+        lambda: {
+            "black_scholes": ol.black_scholes_price(option, market),
+            "binomial": ol.binomial_tree_price(option, market, steps=300),
+            "monte_carlo": ol.monte_carlo_price(option, market, paths=6000, seed=31),
+            "local_vol": ol.local_vol_monte_carlo_price(
+                option,
+                market,
+                ol.LocalVolModel(base_volatility=market.volatility, spot_slope=0.15),
+                paths,
+            ),
+            "stochastic_vol": ol.stochastic_vol_monte_carlo_price(
+                option,
+                market,
+                ol.HestonParams(
+                    initial_variance=market.volatility * market.volatility,
+                    long_run_variance=market.volatility * market.volatility,
+                ),
+                paths,
+            ),
+        }
+    )
+
+
 @app.post("/hedging-simulation")
 def hedging_simulation(payload: HedgingRequest) -> dict[str, Any]:
     result = _safe(
@@ -144,9 +186,21 @@ def vol_surface(payload: VolSurfaceRequest) -> dict[str, Any]:
     quotes = ol.synthetic_option_chain(payload.spot, payload.expiries, payload.strikes)
     surface = ol.VolSurface(quotes)
     interpolated = _safe(lambda: surface.interpolate(payload.query_strike, payload.query_expiry))
+    smile_expiry = min(payload.expiries, key=lambda expiry: abs(expiry - payload.query_expiry))
+    term_strike = min(payload.strikes, key=lambda strike: abs(strike - payload.query_strike))
     return {
         "interpolated_vol": interpolated,
         "quote_count": len(quotes),
+        "smile": [
+            {"strike": quote.strike, "implied_vol": quote.implied_vol}
+            for quote in quotes
+            if quote.expiry == smile_expiry
+        ],
+        "term_structure": [
+            {"expiry": quote.expiry, "implied_vol": quote.implied_vol}
+            for quote in quotes
+            if quote.strike == term_strike
+        ],
         "suspicious_quotes": surface.detect_suspicious_quotes(),
         "arbitrage_warnings": surface.arbitrage_warnings(),
     }
