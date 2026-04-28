@@ -156,6 +156,6 @@ def test_market_snapshot_endpoint(monkeypatch):
 
 
 def test_market_snapshot_rejects_bad_ticker():
-    response = client.get("/market-snapshots/../../secret")
+    response = client.get("/market-snapshots/@bad")
 
     assert response.status_code == 422

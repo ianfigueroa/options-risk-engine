@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from fastapi import FastAPI, HTTPException, Path
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.market_data import fetch_market_snapshot
@@ -90,8 +90,8 @@ def health() -> dict[str, str]:
 
 
 @app.get("/market-snapshots/{ticker}", response_model=MarketSnapshot)
-def market_snapshot(ticker: TickerSymbol = Path(...)) -> dict[str, Any]:
-    return _safe(lambda: fetch_market_snapshot(ticker))
+def market_snapshot(ticker: TickerSymbol) -> dict[str, Any]:
+    return _safe(lambda: fetch_market_snapshot(ticker.upper()))
 
 
 @app.post("/price")
