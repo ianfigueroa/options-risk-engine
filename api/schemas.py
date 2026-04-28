@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
+
+
+TickerSymbol = Annotated[str, StringConstraints(pattern=r"^[A-Za-z][A-Za-z0-9.\-]{0,14}$")]
 
 
 class OptionSchema(BaseModel):
@@ -66,3 +69,14 @@ class VolSurfaceRequest(BaseModel):
     query_strike: float = Field(gt=0.0)
     query_expiry: float = Field(gt=0.0)
 
+
+class MarketSnapshot(BaseModel):
+    ticker: str
+    price: float = Field(gt=0.0)
+    previous_close: float | None = Field(default=None, gt=0.0)
+    change: float | None = None
+    change_percent: float | None = None
+    currency: str = "USD"
+    source: str
+    timestamp: str
+    option_expirations: list[str] = Field(default_factory=list)

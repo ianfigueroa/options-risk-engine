@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from api import main
 from api.main import app
 
 
@@ -126,3 +127,35 @@ def test_model_prices_endpoint():
     assert body["monte_carlo"] > 0.0
     assert body["local_vol"] > 0.0
     assert body["stochastic_vol"] > 0.0
+
+
+def test_market_snapshot_endpoint(monkeypatch):
+    def fake_fetch(ticker: str):
+        assert ticker == "AAPL"
+        return {
+            "ticker": "AAPL",
+            "price": 210.25,
+            "previous_close": 208.0,
+            "change": 2.25,
+            "change_percent": 0.010817307692307692,
+            "currency": "USD",
+            "source": "Yahoo Finance",
+            "timestamp": "2026-05-04T12:00:00+00:00",
+            "option_expirations": ["2026-05-15", "2026-06-19"],
+        }
+
+    monkeypatch.setattr(main, "fetch_market_snapshot", fake_fetch)
+
+    response = client.get("/market-snapshots/aapl")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ticker"] == "AAPL"
+    assert body["price"] == 210.25
+    assert body["option_expirations"] == ["2026-05-15", "2026-06-19"]
+
+
+def test_market_snapshot_rejects_bad_ticker():
+    response = client.get("/market-snapshots/../../secret")
+
+    assert response.status_code == 422

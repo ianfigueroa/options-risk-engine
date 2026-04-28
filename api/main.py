@@ -5,17 +5,20 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.market_data import fetch_market_snapshot
 from api.schemas import (
     HedgingConfigSchema,
     HedgingRequest,
     ImpliedVolRequest,
+    MarketSnapshot,
     MarketSchema,
     OptionSchema,
     PortfolioRequest,
     PriceRequest,
+    TickerSymbol,
     VolSurfaceRequest,
 )
 from options_lab import analytics as ol
@@ -84,6 +87,11 @@ def _safe(call: Callable[[], T]) -> T:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/market-snapshots/{ticker}", response_model=MarketSnapshot)
+def market_snapshot(ticker: TickerSymbol = Path(...)) -> dict[str, Any]:
+    return _safe(lambda: fetch_market_snapshot(ticker))
 
 
 @app.post("/price")
