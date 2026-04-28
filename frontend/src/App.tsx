@@ -145,6 +145,14 @@ function modelRows(prices: ModelPrices): Array<[string, number]> {
   ]
 }
 
+function moneynessStatus(form: FormState) {
+  const distance = form.spot - form.strike
+  const relativeDistance = Math.abs(distance) / Math.max(form.strike, 1)
+  if (relativeDistance <= 0.005) return 'ATM'
+  if (form.kind === 'call') return distance > 0 ? 'ITM' : 'OTM'
+  return distance < 0 ? 'ITM' : 'OTM'
+}
+
 export default function App() {
   const [form, setForm] = useState<FormState>({
     kind: 'call',
@@ -247,6 +255,9 @@ export default function App() {
   const forward = form.spot * Math.exp(form.rate * form.expiry)
   const breakeven = form.kind === 'call' ? form.strike + price : form.strike - price
   const moneyness = form.spot / form.strike
+  const statusLabel = moneynessStatus(form)
+  const distanceToStrike = Math.abs(form.spot - form.strike)
+  const distanceToStrikePct = distanceToStrike / Math.max(form.strike, 1)
   const hedgeRange = minMax(hedge.spot_path)
   const maxStressPnl = Math.max(1, ...stress.map((row) => Math.abs(row.pnl)))
   const greekBars: Array<[string, number]> = Object.entries(greeks).map(([key, value]) => [key, value])
@@ -299,10 +310,13 @@ export default function App() {
             <div><span>Intrinsic</span><strong>${format(intrinsic, 4)}</strong></div>
             <div><span>Time value</span><strong>${format(timeValue, 4)}</strong></div>
             <div><span>Moneyness S/K</span><strong>{format(moneyness, 4)}</strong></div>
+            <div><span>Status</span><strong>{statusLabel}</strong></div>
+            <div><span>Distance to strike</span><strong>${format(distanceToStrike, 2)} / {percent(distanceToStrikePct)}</strong></div>
             <div><span>Forward</span><strong>{format(forward, 4)}</strong></div>
             <div><span>Breakeven</span><strong>{format(breakeven, 4)}</strong></div>
             <div><span>API status</span><strong>{status}</strong></div>
           </div>
+          <PayoffChart kind={form.kind} spot={form.spot} strike={form.strike} premium={price} breakeven={breakeven} />
         </div>
 
         <div className="panel">
@@ -457,6 +471,67 @@ function MiniLine({ title, xLabel, values, labels }: { title: string; xLabel: st
         <polyline points={sparkline(values)} />
       </svg>
       <div className="axis-row"><span>{xLabel}</span><span>{labels[0] ?? '-'}</span><span>{labels[labels.length - 1] ?? '-'}</span></div>
+    </div>
+  )
+}
+
+function PayoffChart({
+  kind,
+  spot,
+  strike,
+  premium,
+  breakeven,
+}: {
+  kind: OptionKind
+  spot: number
+  strike: number
+  premium: number
+  breakeven: number
+}) {
+  const low = Math.max(0.01, Math.min(spot, strike, breakeven) * 0.72)
+  const high = Math.max(spot, strike, breakeven) * 1.28
+  const spots = Array.from({ length: 49 }, (_, index) => low + ((high - low) * index) / 48)
+  const payoff = spots.map((terminalSpot) =>
+    kind === 'call' ? Math.max(terminalSpot - strike, 0) : Math.max(strike - terminalSpot, 0),
+  )
+  const profit = payoff.map((value) => value - premium)
+  const yValues = [...payoff, ...profit, 0]
+  const yMin = Math.min(...yValues)
+  const yMax = Math.max(...yValues)
+  const ySpan = yMax - yMin || 1
+  const xOf = (value: number) => ((value - low) / (high - low)) * 100
+  const yOf = (value: number) => 88 - ((value - yMin) / ySpan) * 72
+  const toPoints = (values: number[]) =>
+    values.map((value, index) => `${xOf(spots[index])},${yOf(value)}`).join(' ')
+  const zeroY = yOf(0)
+  const markerRows: Array<[string, number]> = [
+    ['Spot', spot],
+    ['Strike', strike],
+    ['B/E', breakeven],
+  ]
+
+  return (
+    <div className="payoff-wrap">
+      <div className="payoff-head">
+        <span>Expiration payoff and profit</span>
+        <span>{kind === 'call' ? 'Long call' : 'Long put'} using current model premium</span>
+      </div>
+      <svg viewBox="0 0 100 100" className="payoff-chart" role="img" aria-label="Option payoff and profit at expiration">
+        <line x1="4" x2="98" y1={zeroY} y2={zeroY} className="axis-line" />
+        {markerRows.map(([label, value]) => (
+          <g key={label}>
+            <line x1={xOf(value)} x2={xOf(value)} y1="10" y2="92" className="marker-line" />
+            <text x={xOf(value) + 0.8} y="14">{label}</text>
+          </g>
+        ))}
+        <polyline points={toPoints(payoff)} className="payoff-line" />
+        <polyline points={toPoints(profit)} className="profit-line" />
+      </svg>
+      <div className="payoff-legend">
+        <span><i className="payoff-key" />Payoff</span>
+        <span><i className="profit-key" />Profit after premium</span>
+        <span>Range ${format(low, 0)} - ${format(high, 0)}</span>
+      </div>
     </div>
   )
 }
