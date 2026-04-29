@@ -53,6 +53,18 @@ type SurfaceResult = {
   arbitrage_warnings: string[]
 }
 
+type MarketSnapshot = {
+  ticker: string
+  price: number
+  previous_close: number | null
+  change: number | null
+  change_percent: number | null
+  currency: string
+  source: string
+  timestamp: string
+  option_expirations: string[]
+}
+
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
 const defaultGreeks: Greeks = { delta: 0, gamma: 0, vega: 0, theta: 0, rho: 0 }
@@ -77,6 +89,15 @@ async function postJson<T>(path: string, payload: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }))
+    throw new Error(typeof body.detail === 'string' ? body.detail : 'request failed')
+  }
+  return (await response.json()) as T
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${apiBase}${path}`)
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: response.statusText }))
     throw new Error(typeof body.detail === 'string' ? body.detail : 'request failed')
@@ -154,6 +175,7 @@ function moneynessStatus(form: FormState) {
 }
 
 export default function App() {
+  const [ticker, setTicker] = useState('AAPL')
   const [form, setForm] = useState<FormState>({
     kind: 'call',
     spot: 100,
@@ -178,8 +200,11 @@ export default function App() {
   const [surfaceWarnings, setSurfaceWarnings] = useState(0)
   const [smile, setSmile] = useState<SurfaceResult['smile']>([])
   const [termStructure, setTermStructure] = useState<SurfaceResult['term_structure']>([])
+  const [marketSnapshot, setMarketSnapshot] = useState<MarketSnapshot | null>(null)
   const [status, setStatus] = useState('API idle')
+  const [marketStatus, setMarketStatus] = useState('Market data idle')
   const [loading, setLoading] = useState(false)
+  const [marketLoading, setMarketLoading] = useState(false)
 
   const basePayload = useMemo(() => optionMarketPayload(form), [form])
 
@@ -249,6 +274,24 @@ export default function App() {
     void runAnalytics()
   }, [runAnalytics])
 
+  const loadMarketSnapshot = useCallback(async () => {
+    const symbol = ticker.trim().toUpperCase()
+    if (!symbol) return
+    setMarketLoading(true)
+    setMarketStatus('Loading quote')
+    try {
+      const snapshot = await getJson<MarketSnapshot>(`/market-snapshots/${encodeURIComponent(symbol)}`)
+      setMarketSnapshot(snapshot)
+      setTicker(snapshot.ticker)
+      setForm((current) => ({ ...current, spot: Number(snapshot.price.toFixed(4)) }))
+      setMarketStatus(`${snapshot.source} live`)
+    } catch (error) {
+      setMarketStatus(error instanceof Error ? error.message : 'Market data unavailable')
+    } finally {
+      setMarketLoading(false)
+    }
+  }, [ticker])
+
   const intrinsic =
     form.kind === 'call' ? Math.max(form.spot - form.strike, 0) : Math.max(form.strike - form.spot, 0)
   const timeValue = Math.max(price - intrinsic, 0)
@@ -290,6 +333,18 @@ export default function App() {
       <section className="grid">
         <div className="panel controls">
           <div className="panel-title">Inputs</div>
+          <div className="ticker-control">
+            <label>Ticker<input value={ticker} onChange={(event) => setTicker(event.target.value.toUpperCase())} /></label>
+            <button className="secondary-button" type="button" onClick={loadMarketSnapshot} disabled={marketLoading}>
+              {marketLoading ? 'Loading' : 'Load market'}
+            </button>
+          </div>
+          <div className="market-snapshot">
+            <div><span>Live spot</span><strong>{marketSnapshot ? `$${format(marketSnapshot.price, 2)}` : '-'}</strong></div>
+            <div><span>Change</span><strong className={(marketSnapshot?.change ?? 0) >= 0 ? 'positive' : 'negative'}>{marketSnapshot?.change === null || marketSnapshot?.change === undefined ? '-' : `${format(marketSnapshot.change, 2)} / ${percent(marketSnapshot.change_percent ?? 0)}`}</strong></div>
+            <div><span>Options dates</span><strong>{marketSnapshot ? marketSnapshot.option_expirations.length : '-'}</strong></div>
+            <div><span>Market status</span><strong>{marketStatus}</strong></div>
+          </div>
           <label>Type<select value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value as OptionKind })}><option value="call">Call</option><option value="put">Put</option></select></label>
           <label>Spot<input type="number" value={form.spot} onChange={(event) => setForm({ ...form, spot: Number(event.target.value) })} /></label>
           <label>Strike<input type="number" value={form.strike} onChange={(event) => setForm({ ...form, strike: Number(event.target.value) })} /></label>
@@ -301,25 +356,27 @@ export default function App() {
           <div className="note">Model: European Black-Scholes, continuous rates, no discrete dividends.</div>
         </div>
 
-        <div className="panel span-2">
-          <div className="panel-title">Option summary</div>
-          <div className="summary-grid">
-            <div><span>Price</span><strong>${format(price, 4)}</strong></div>
-            <div><span>Model IV</span><strong>{percent(iv)}</strong></div>
-            <div><span>Market IV</span><strong>{percent(manualIv)}</strong></div>
-            <div><span>Intrinsic</span><strong>${format(intrinsic, 4)}</strong></div>
-            <div><span>Time value</span><strong>${format(timeValue, 4)}</strong></div>
-            <div><span>Moneyness S/K</span><strong>{format(moneyness, 4)}</strong></div>
-            <div><span>Status</span><strong>{statusLabel}</strong></div>
-            <div><span>Distance to strike</span><strong>${format(distanceToStrike, 2)} / {percent(distanceToStrikePct)}</strong></div>
-            <div><span>Forward</span><strong>{format(forward, 4)}</strong></div>
-            <div><span>Breakeven</span><strong>{format(breakeven, 4)}</strong></div>
-            <div><span>API status</span><strong>{status}</strong></div>
+        <div className="panel span-3 valuation-panel">
+          <div className="panel-title">Option valuation</div>
+          <div className="valuation-layout">
+            <div className="summary-grid valuation-summary">
+              <div><span>Price</span><strong>${format(price, 4)}</strong></div>
+              <div><span>Status</span><strong>{statusLabel}</strong></div>
+              <div><span>Market IV</span><strong>{percent(manualIv)}</strong></div>
+              <div><span>Model IV</span><strong>{percent(iv)}</strong></div>
+              <div><span>Intrinsic</span><strong>${format(intrinsic, 4)}</strong></div>
+              <div><span>Time value</span><strong>${format(timeValue, 4)}</strong></div>
+              <div><span>Moneyness S/K</span><strong>{format(moneyness, 4)}</strong></div>
+              <div><span>Distance</span><strong>${format(distanceToStrike, 2)} / {percent(distanceToStrikePct)}</strong></div>
+              <div><span>Forward</span><strong>{format(forward, 4)}</strong></div>
+              <div><span>Breakeven</span><strong>{format(breakeven, 4)}</strong></div>
+              <div><span>API status</span><strong>{status}</strong></div>
+            </div>
+            <PayoffChart kind={form.kind} spot={form.spot} strike={form.strike} premium={price} breakeven={breakeven} />
           </div>
-          <PayoffChart kind={form.kind} spot={form.spot} strike={form.strike} premium={price} breakeven={breakeven} />
         </div>
 
-        <div className="panel">
+        <div className="panel span-2">
           <div className="panel-title">Surface query</div>
           <div className="metric-row"><span>Interpolated IV</span><strong>{percent(surfaceVol)}</strong></div>
           <div className="metric-row"><span>Query point</span><strong>K {format(form.strike, 2)} / T {format(form.expiry, 2)}</strong></div>
@@ -504,10 +561,10 @@ function PayoffChart({
   const toPoints = (values: number[]) =>
     values.map((value, index) => `${xOf(spots[index])},${yOf(value)}`).join(' ')
   const zeroY = yOf(0)
-  const markerRows: Array<[string, number]> = [
-    ['Spot', spot],
-    ['Strike', strike],
-    ['B/E', breakeven],
+  const markerRows: Array<[string, number, string]> = [
+    ['Spot', spot, `$${format(spot, 2)}`],
+    ['Strike', strike, `$${format(strike, 2)}`],
+    ['B/E', breakeven, `$${format(breakeven, 2)}`],
   ]
 
   return (
@@ -521,7 +578,6 @@ function PayoffChart({
         {markerRows.map(([label, value]) => (
           <g key={label}>
             <line x1={xOf(value)} x2={xOf(value)} y1="10" y2="92" className="marker-line" />
-            <text x={xOf(value) + 0.8} y="14">{label}</text>
           </g>
         ))}
         <polyline points={toPoints(payoff)} className="payoff-line" />
@@ -531,6 +587,9 @@ function PayoffChart({
         <span><i className="payoff-key" />Payoff</span>
         <span><i className="profit-key" />Profit after premium</span>
         <span>Range ${format(low, 0)} - ${format(high, 0)}</span>
+      </div>
+      <div className="payoff-markers">
+        {markerRows.map(([label, , value]) => <span key={label}>{label}: {value}</span>)}
       </div>
     </div>
   )
