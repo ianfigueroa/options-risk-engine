@@ -159,3 +159,38 @@ def test_market_snapshot_rejects_bad_ticker():
     response = client.get("/market-snapshots/@bad")
 
     assert response.status_code == 422
+
+
+def test_option_quote_endpoint(monkeypatch):
+    def fake_fetch(ticker: str, kind: str, strike: float, expiry_years: float):
+        assert (ticker, kind, strike, expiry_years) == ("AAPL", "call", 210.0, 0.25)
+        return {
+            "ticker": "AAPL",
+            "kind": "call",
+            "requested_strike": 210.0,
+            "matched_strike": 210.0,
+            "expiration": "2026-08-21",
+            "last_price": 12.4,
+            "bid": 12.25,
+            "ask": 12.55,
+            "mid": 12.4,
+            "implied_volatility": 0.31,
+            "volume": 120,
+            "open_interest": 4500,
+            "source": "Yahoo Finance",
+        }
+
+    monkeypatch.setattr(main, "fetch_nearest_option_quote", fake_fetch)
+
+    response = client.get("/option-quotes/AAPL?kind=call&strike=210&expiry_years=0.25")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched_strike"] == 210.0
+    assert body["mid"] == 12.4
+
+
+def test_option_quote_rejects_bad_strike():
+    response = client.get("/option-quotes/AAPL?kind=call&strike=-1&expiry_years=0.25")
+
+    assert response.status_code == 422

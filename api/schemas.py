@@ -80,3 +80,19 @@ class MarketSnapshot(BaseModel):
     source: str
     timestamp: str
     option_expirations: list[str] = Field(default_factory=list)
+
+
+class LiveOptionQuote(BaseModel):
+    ticker: str
+    kind: Literal["call", "put"]
+    requested_strike: float = Field(gt=0.0)
+    matched_strike: float = Field(gt=0.0)
+    expiration: str
+    last_price: float | None = Field(default=None, ge=0.0)
+    bid: float | None = Field(default=None, ge=0.0)
+    ask: float | None = Field(default=None, ge=0.0)
+    mid: float | None = Field(default=None, ge=0.0)
+    implied_volatility: float | None = Field(default=None, ge=0.0)
+    volume: int | None = Field(default=None, ge=0)
+    open_interest: int | None = Field(default=None, ge=0)
+    source: str

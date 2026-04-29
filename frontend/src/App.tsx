@@ -65,6 +65,22 @@ type MarketSnapshot = {
   option_expirations: string[]
 }
 
+type LiveOptionQuote = {
+  ticker: string
+  kind: OptionKind
+  requested_strike: number
+  matched_strike: number
+  expiration: string
+  last_price: number | null
+  bid: number | null
+  ask: number | null
+  mid: number | null
+  implied_volatility: number | null
+  volume: number | null
+  open_interest: number | null
+  source: string
+}
+
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
 const defaultGreeks: Greeks = { delta: 0, gamma: 0, vega: 0, theta: 0, rho: 0 }
@@ -201,6 +217,7 @@ export default function App() {
   const [smile, setSmile] = useState<SurfaceResult['smile']>([])
   const [termStructure, setTermStructure] = useState<SurfaceResult['term_structure']>([])
   const [marketSnapshot, setMarketSnapshot] = useState<MarketSnapshot | null>(null)
+  const [liveOptionQuote, setLiveOptionQuote] = useState<LiveOptionQuote | null>(null)
   const [status, setStatus] = useState('API idle')
   const [marketStatus, setMarketStatus] = useState('Market data idle')
   const [loading, setLoading] = useState(false)
@@ -284,13 +301,23 @@ export default function App() {
       setMarketSnapshot(snapshot)
       setTicker(snapshot.ticker)
       setForm((current) => ({ ...current, spot: Number(snapshot.price.toFixed(4)) }))
+      const query = new URLSearchParams({
+        kind: form.kind,
+        strike: String(form.strike),
+        expiry_years: String(form.expiry),
+      })
+      const quote = await getJson<LiveOptionQuote>(`/option-quotes/${encodeURIComponent(symbol)}?${query}`)
+      setLiveOptionQuote(quote)
+      const livePrice = quote.mid ?? quote.last_price
+      if (livePrice !== null) setMarketPrice(Number(livePrice.toFixed(4)))
       setMarketStatus(`${snapshot.source} live`)
     } catch (error) {
+      setLiveOptionQuote(null)
       setMarketStatus(error instanceof Error ? error.message : 'Market data unavailable')
     } finally {
       setMarketLoading(false)
     }
-  }, [ticker])
+  }, [form.expiry, form.kind, form.strike, ticker])
 
   const intrinsic =
     form.kind === 'call' ? Math.max(form.spot - form.strike, 0) : Math.max(form.strike - form.spot, 0)
@@ -342,6 +369,8 @@ export default function App() {
           <div className="market-snapshot">
             <div><span>Live spot</span><strong>{marketSnapshot ? `$${format(marketSnapshot.price, 2)}` : '-'}</strong></div>
             <div><span>Change</span><strong className={(marketSnapshot?.change ?? 0) >= 0 ? 'positive' : 'negative'}>{marketSnapshot?.change === null || marketSnapshot?.change === undefined ? '-' : `${format(marketSnapshot.change, 2)} / ${percent(marketSnapshot.change_percent ?? 0)}`}</strong></div>
+            <div><span>Option mid</span><strong>{liveOptionQuote?.mid === null || liveOptionQuote?.mid === undefined ? '-' : `$${format(liveOptionQuote.mid, 2)}`}</strong></div>
+            <div><span>Matched contract</span><strong>{liveOptionQuote ? `${liveOptionQuote.expiration} / K ${format(liveOptionQuote.matched_strike, 0)}` : '-'}</strong></div>
             <div><span>Options dates</span><strong>{marketSnapshot ? marketSnapshot.option_expirations.length : '-'}</strong></div>
             <div><span>Market status</span><strong>{marketStatus}</strong></div>
           </div>

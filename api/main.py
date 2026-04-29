@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.market_data import fetch_market_snapshot
+from api.market_data import fetch_market_snapshot, fetch_nearest_option_quote
 from api.schemas import (
     HedgingConfigSchema,
     HedgingRequest,
     ImpliedVolRequest,
+    LiveOptionQuote,
     MarketSnapshot,
     MarketSchema,
     OptionSchema,
@@ -92,6 +93,16 @@ def health() -> dict[str, str]:
 @app.get("/market-snapshots/{ticker}", response_model=MarketSnapshot)
 def market_snapshot(ticker: TickerSymbol) -> dict[str, Any]:
     return _safe(lambda: fetch_market_snapshot(ticker.upper()))
+
+
+@app.get("/option-quotes/{ticker}", response_model=LiveOptionQuote)
+def option_quote(
+    ticker: TickerSymbol,
+    kind: Literal["call", "put"] = Query(...),
+    strike: float = Query(..., gt=0.0),
+    expiry_years: float = Query(..., gt=0.0),
+) -> dict[str, Any]:
+    return _safe(lambda: fetch_nearest_option_quote(ticker.upper(), kind, strike, expiry_years))
 
 
 @app.post("/price")
