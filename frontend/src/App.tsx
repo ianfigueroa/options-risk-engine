@@ -2,6 +2,7 @@ import { Play, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type OptionKind = 'call' | 'put'
+type SurfaceSource = 'synthetic' | 'live'
 
 type FormState = {
   kind: OptionKind
@@ -45,8 +46,10 @@ type HedgeResult = {
 }
 
 type SurfaceResult = {
+  source?: string
   interpolated_vol: number
   quote_count: number
+  failed_quote_count?: number
   smile: Array<{ strike: number; implied_vol: number }>
   term_structure: Array<{ expiry: number; implied_vol: number }>
   suspicious_quotes: unknown[]
@@ -232,9 +235,11 @@ export default function App() {
   const [hedge, setHedge] = useState<HedgeResult>(fallbackHedge)
   const [surfaceVol, setSurfaceVol] = useState(0)
   const [quoteCount, setQuoteCount] = useState(0)
+  const [failedQuoteCount, setFailedQuoteCount] = useState(0)
   const [surfaceWarnings, setSurfaceWarnings] = useState(0)
   const [smile, setSmile] = useState<SurfaceResult['smile']>([])
   const [termStructure, setTermStructure] = useState<SurfaceResult['term_structure']>([])
+  const [surfaceSource, setSurfaceSource] = useState<SurfaceSource>('synthetic')
   const [marketSnapshot, setMarketSnapshot] = useState<MarketSnapshot | null>(null)
   const [liveOptionQuote, setLiveOptionQuote] = useState<LiveOptionQuote | null>(null)
   const [status, setStatus] = useState('API idle')
@@ -290,19 +295,31 @@ export default function App() {
       setStatus('API live')
 
       try {
-        const surfaceResponse = await postJson<SurfaceResult>('/vol-surface', {
-          spot: form.spot,
-          expiries: surfaceExpiries(form.expiry),
-          strikes: surfaceStrikes(form.spot, form.strike),
-          query_strike: form.strike,
-          query_expiry: form.expiry,
-        })
+        const surfaceResponse = surfaceSource === 'live'
+          ? await getJson<SurfaceResult>(`/live-vol-surface/${encodeURIComponent(ticker)}?${new URLSearchParams({
+            kind: form.kind,
+            spot: String(form.spot),
+            rate: String(form.rate),
+            dividend_yield: '0',
+            query_strike: String(form.strike),
+            query_expiry: String(form.expiry),
+            max_expirations: '4',
+            strike_window: '0.35',
+          })}`)
+          : await postJson<SurfaceResult>('/vol-surface', {
+            spot: form.spot,
+            expiries: surfaceExpiries(form.expiry),
+            strikes: surfaceStrikes(form.spot, form.strike),
+            query_strike: form.strike,
+            query_expiry: form.expiry,
+          })
         setSurfaceVol(surfaceResponse.interpolated_vol)
         setQuoteCount(surfaceResponse.quote_count)
+        setFailedQuoteCount(surfaceResponse.failed_quote_count ?? 0)
         setSurfaceWarnings(surfaceResponse.suspicious_quotes.length + surfaceResponse.arbitrage_warnings.length)
         setSmile(surfaceResponse.smile)
         setTermStructure(surfaceResponse.term_structure)
-        setSurfaceStatus('Surface live')
+        setSurfaceStatus(surfaceResponse.source ?? (surfaceSource === 'live' ? 'Live option chain' : 'Synthetic surface'))
       } catch (error) {
         setSurfaceStatus(error instanceof Error ? error.message : 'Surface unavailable')
       }
@@ -311,7 +328,7 @@ export default function App() {
     } finally {
       setLoading(false)
     }
-  }, [basePayload, form.expiry, form.spot, form.strike, marketPrice])
+  }, [basePayload, form.expiry, form.kind, form.rate, form.spot, form.strike, marketPrice, surfaceSource, ticker])
 
   useEffect(() => {
     void runAnalytics()
@@ -447,9 +464,11 @@ export default function App() {
 
         <div className="panel span-2">
           <div className="panel-title">Surface query</div>
+          <label className="surface-source">Source<select value={surfaceSource} onChange={(event) => setSurfaceSource(event.target.value as SurfaceSource)}><option value="synthetic">Synthetic</option><option value="live">Live option chain</option></select></label>
           <div className="metric-row"><span>Interpolated IV</span><strong>{percent(surfaceVol)}</strong></div>
           <div className="metric-row"><span>Query point</span><strong>K {format(form.strike, 2)} / T {format(form.expiry, 2)}</strong></div>
           <div className="metric-row"><span>Quote grid</span><strong>{quoteCount} quotes</strong></div>
+          <div className="metric-row"><span>Failed live quotes</span><strong>{surfaceSource === 'live' ? failedQuoteCount : '-'}</strong></div>
           <div className="metric-row"><span>Surface warnings</span><strong>{surfaceWarnings}</strong></div>
           <div className="metric-row"><span>Status</span><strong>{surfaceStatus}</strong></div>
         </div>

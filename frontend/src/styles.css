@@ -310,6 +310,9 @@ select:focus {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.surface-source {
+  margin-bottom: 10px;
+}
 table {
   width: 100%;
   border-collapse: collapse;
