@@ -190,6 +190,25 @@ function moneynessStatus(form: FormState) {
   return distance < 0 ? 'ITM' : 'OTM'
 }
 
+function surfaceStrikes(spot: number, strike: number) {
+  const low = Math.max(0.01, Math.min(spot, strike) * 0.85)
+  const high = Math.max(spot, strike) * 1.15
+  const step = (high - low) / 4
+  return Array.from({ length: 5 }, (_, index) => Number((low + step * index).toFixed(6)))
+}
+
+function surfaceExpiries(expiry: number) {
+  return Array.from(new Set([0.25, 0.5, 1, 2, Math.max(0.01, expiry)].map((value) => Number(value.toFixed(6)))))
+    .sort((left, right) => left - right)
+}
+
+function yearsUntilExpiration(expiration: string) {
+  const expiryDate = new Date(`${expiration}T00:00:00`)
+  if (Number.isNaN(expiryDate.getTime())) return null
+  const days = (expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+  return Math.max(1 / 365, days / 365)
+}
+
 export default function App() {
   const [ticker, setTicker] = useState('AAPL')
   const [form, setForm] = useState<FormState>({
@@ -219,6 +238,7 @@ export default function App() {
   const [marketSnapshot, setMarketSnapshot] = useState<MarketSnapshot | null>(null)
   const [liveOptionQuote, setLiveOptionQuote] = useState<LiveOptionQuote | null>(null)
   const [status, setStatus] = useState('API idle')
+  const [surfaceStatus, setSurfaceStatus] = useState('Surface idle')
   const [marketStatus, setMarketStatus] = useState('Market data idle')
   const [loading, setLoading] = useState(false)
   const [marketLoading, setMarketLoading] = useState(false)
@@ -256,13 +276,6 @@ export default function App() {
         ...basePayload,
         config: { steps: 60, rebalance_interval: 2, seed: 12, transaction_cost_rate: 0.001 },
       })
-      const surfaceResponse = await postJson<SurfaceResult>('/vol-surface', {
-        spot: form.spot,
-        expiries: [0.25, 0.5, 1, 2],
-        strikes: [form.spot * 0.8, form.spot * 0.9, form.spot, form.spot * 1.1, form.spot * 1.2],
-        query_strike: form.strike,
-        query_expiry: form.expiry,
-      })
 
       setPrice(priceResponse.price)
       setGreeks(greeksResponse)
@@ -274,12 +287,25 @@ export default function App() {
       setStress(stressResponse.scenarios)
       setScenarioGreekRows(scenarioGreeksResponse.scenarios)
       setHedge(hedgeResponse)
-      setSurfaceVol(surfaceResponse.interpolated_vol)
-      setQuoteCount(surfaceResponse.quote_count)
-      setSurfaceWarnings(surfaceResponse.suspicious_quotes.length + surfaceResponse.arbitrage_warnings.length)
-      setSmile(surfaceResponse.smile)
-      setTermStructure(surfaceResponse.term_structure)
       setStatus('API live')
+
+      try {
+        const surfaceResponse = await postJson<SurfaceResult>('/vol-surface', {
+          spot: form.spot,
+          expiries: surfaceExpiries(form.expiry),
+          strikes: surfaceStrikes(form.spot, form.strike),
+          query_strike: form.strike,
+          query_expiry: form.expiry,
+        })
+        setSurfaceVol(surfaceResponse.interpolated_vol)
+        setQuoteCount(surfaceResponse.quote_count)
+        setSurfaceWarnings(surfaceResponse.suspicious_quotes.length + surfaceResponse.arbitrage_warnings.length)
+        setSmile(surfaceResponse.smile)
+        setTermStructure(surfaceResponse.term_structure)
+        setSurfaceStatus('Surface live')
+      } catch (error) {
+        setSurfaceStatus(error instanceof Error ? error.message : 'Surface unavailable')
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'API unavailable')
     } finally {
@@ -300,17 +326,30 @@ export default function App() {
       const snapshot = await getJson<MarketSnapshot>(`/market-snapshots/${encodeURIComponent(symbol)}`)
       setMarketSnapshot(snapshot)
       setTicker(snapshot.ticker)
-      setForm((current) => ({ ...current, spot: Number(snapshot.price.toFixed(4)) }))
+      const liveSpot = Number(snapshot.price.toFixed(4))
       const query = new URLSearchParams({
         kind: form.kind,
         strike: String(form.strike),
         expiry_years: String(form.expiry),
       })
-      const quote = await getJson<LiveOptionQuote>(`/option-quotes/${encodeURIComponent(symbol)}?${query}`)
-      setLiveOptionQuote(quote)
-      const livePrice = quote.mid ?? quote.last_price
-      if (livePrice !== null) setMarketPrice(Number(livePrice.toFixed(4)))
-      setMarketStatus(`${snapshot.source} live`)
+      try {
+        const quote = await getJson<LiveOptionQuote>(`/option-quotes/${encodeURIComponent(symbol)}?${query}`)
+        const livePrice = quote.mid ?? quote.last_price
+        const liveExpiry = yearsUntilExpiration(quote.expiration)
+        setLiveOptionQuote(quote)
+        if (livePrice !== null) setMarketPrice(Number(livePrice.toFixed(4)))
+        setForm((current) => ({
+          ...current,
+          spot: liveSpot,
+          strike: Number(quote.matched_strike.toFixed(4)),
+          expiry: liveExpiry === null ? current.expiry : Number(liveExpiry.toFixed(6)),
+        }))
+        setMarketStatus(`${snapshot.source} live`)
+      } catch (error) {
+        setLiveOptionQuote(null)
+        setForm((current) => ({ ...current, spot: liveSpot }))
+        setMarketStatus(error instanceof Error ? `Stock live; ${error.message}` : 'Stock live; option quote unavailable')
+      }
     } catch (error) {
       setLiveOptionQuote(null)
       setMarketStatus(error instanceof Error ? error.message : 'Market data unavailable')
@@ -321,7 +360,7 @@ export default function App() {
 
   const intrinsic =
     form.kind === 'call' ? Math.max(form.spot - form.strike, 0) : Math.max(form.strike - form.spot, 0)
-  const timeValue = Math.max(price - intrinsic, 0)
+  const timeValue = price - intrinsic
   const forward = form.spot * Math.exp(form.rate * form.expiry)
   const breakeven = form.kind === 'call' ? form.strike + price : form.strike - price
   const moneyness = form.spot / form.strike
@@ -371,6 +410,7 @@ export default function App() {
             <div><span>Change</span><strong className={(marketSnapshot?.change ?? 0) >= 0 ? 'positive' : 'negative'}>{marketSnapshot?.change === null || marketSnapshot?.change === undefined ? '-' : `${format(marketSnapshot.change, 2)} / ${percent(marketSnapshot.change_percent ?? 0)}`}</strong></div>
             <div><span>Option mid</span><strong>{liveOptionQuote?.mid === null || liveOptionQuote?.mid === undefined ? '-' : `$${format(liveOptionQuote.mid, 2)}`}</strong></div>
             <div><span>Matched contract</span><strong>{liveOptionQuote ? `${liveOptionQuote.expiration} / K ${format(liveOptionQuote.matched_strike, 0)}` : '-'}</strong></div>
+            <div><span>Chain IV</span><strong>{liveOptionQuote?.implied_volatility === null || liveOptionQuote?.implied_volatility === undefined ? '-' : percent(liveOptionQuote.implied_volatility)}</strong></div>
             <div><span>Options dates</span><strong>{marketSnapshot ? marketSnapshot.option_expirations.length : '-'}</strong></div>
             <div><span>Market status</span><strong>{marketStatus}</strong></div>
           </div>
@@ -411,7 +451,7 @@ export default function App() {
           <div className="metric-row"><span>Query point</span><strong>K {format(form.strike, 2)} / T {format(form.expiry, 2)}</strong></div>
           <div className="metric-row"><span>Quote grid</span><strong>{quoteCount} quotes</strong></div>
           <div className="metric-row"><span>Surface warnings</span><strong>{surfaceWarnings}</strong></div>
-          <div className="metric-row"><span>Status</span><strong>{status}</strong></div>
+          <div className="metric-row"><span>Status</span><strong>{surfaceStatus}</strong></div>
         </div>
 
         <div className="panel span-2">
