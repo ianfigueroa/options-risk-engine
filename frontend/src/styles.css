@@ -85,6 +85,7 @@ h1 {
   display: grid;
   grid-template-columns: 1.05fr 1fr 1fr 1fr;
   gap: 12px;
+  align-items: start;
 }
 .panel {
   min-width: 0;
@@ -179,6 +180,34 @@ select:focus {
   background: #13161a;
   font-size: 0.82rem;
 }
+.trade-ticket {
+  position: sticky;
+  top: 16px;
+}
+.quote-stack {
+  display: grid;
+  gap: 0;
+}
+.quote-stack div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #2a2e33;
+}
+.quote-stack div:last-child {
+  border-bottom: 0;
+}
+.quote-stack span {
+  color: #9da5af;
+  font-size: 0.78rem;
+}
+.quote-stack strong {
+  color: #f2f4f6;
+  text-align: right;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -207,18 +236,30 @@ select:focus {
   font-size: 1rem;
   font-variant-numeric: tabular-nums;
 }
-.valuation-panel {
-  min-height: 538px;
-}
 .valuation-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 0.9fr) minmax(420px, 1.4fr);
+  grid-template-columns: minmax(290px, 0.95fr) minmax(380px, 1.15fr);
   gap: 12px;
   align-items: stretch;
 }
 .valuation-summary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
+}
+.valuation-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  color: #aab2bd;
+  font-size: 0.78rem;
+}
+.valuation-foot span {
+  padding: 5px 8px;
+  border: 1px solid #2b3036;
+  border-radius: 3px;
+  background: #121519;
+  font-variant-numeric: tabular-nums;
 }
 .payoff-wrap {
   padding: 10px;
@@ -310,8 +351,21 @@ select:focus {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.surface-source {
+.surface-source,
+.source-controls {
   margin-bottom: 10px;
+}
+.source-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.vol-panel .metric-row:nth-of-type(2),
+.vol-panel .metric-row:nth-of-type(3) {
+  background: #14181d;
+  margin: 0 -2px;
+  padding-right: 2px;
+  padding-left: 2px;
 }
 table {
   width: 100%;
@@ -482,6 +536,7 @@ th:last-child {
   .controls,
   .ticker-control,
   .market-snapshot,
+  .source-controls,
   .stress-heatmap,
   .summary-grid,
   .summary-grid.compact {
@@ -505,6 +560,9 @@ th:last-child {
   }
   .payoff-chart {
     height: 240px;
+  }
+  .trade-ticket {
+    position: static;
   }
   .payoff-markers {
     align-items: flex-start;

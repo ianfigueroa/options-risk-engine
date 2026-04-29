@@ -1,8 +1,9 @@
 import { Play, RefreshCw } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 type OptionKind = 'call' | 'put'
 type SurfaceSource = 'synthetic' | 'live'
+type VolMarkSource = 'manual' | 'market' | 'chain' | 'surface'
 
 type FormState = {
   kind: OptionKind
@@ -124,7 +125,7 @@ async function getJson<T>(path: string): Promise<T> {
   return (await response.json()) as T
 }
 
-function optionMarketPayload(form: FormState) {
+function optionMarketPayload(form: FormState, volatility = form.volatility) {
   return {
     option: {
       kind: form.kind,
@@ -136,17 +137,41 @@ function optionMarketPayload(form: FormState) {
       spot: form.spot,
       rate: form.rate,
       dividend_yield: 0,
-      volatility: form.volatility,
+      volatility,
     },
   }
 }
 
 function format(value: number, digits = 4) {
-  return Number.isFinite(value) ? value.toFixed(digits) : '-'
+  if (!Number.isFinite(value)) return '-'
+  const roundedZero = Math.abs(value) < 0.5 * 10 ** -digits ? 0 : value
+  return roundedZero.toFixed(digits)
 }
 
 function percent(value: number, digits = 2) {
   return `${format(value * 100, digits)}%`
+}
+
+function optionalPercent(value: number | null | undefined, digits = 2) {
+  return typeof value === 'number' && Number.isFinite(value) ? percent(value, digits) : '-'
+}
+
+function optionalMoney(value: number | null | undefined, digits = 2) {
+  return typeof value === 'number' && Number.isFinite(value) ? `$${format(value, digits)}` : '-'
+}
+
+function resolvePricingVol(
+  source: VolMarkSource,
+  values: { manual: number; market: number; chain?: number | null; surface: number },
+) {
+  const candidates: Record<VolMarkSource, number | null | undefined> = {
+    manual: values.manual,
+    market: values.market,
+    chain: values.chain,
+    surface: values.surface,
+  }
+  const selected = candidates[source]
+  return typeof selected === 'number' && Number.isFinite(selected) && selected >= 0 ? selected : values.manual
 }
 
 function sparkline(values: number[]) {
@@ -240,6 +265,8 @@ export default function App() {
   const [smile, setSmile] = useState<SurfaceResult['smile']>([])
   const [termStructure, setTermStructure] = useState<SurfaceResult['term_structure']>([])
   const [surfaceSource, setSurfaceSource] = useState<SurfaceSource>('synthetic')
+  const [volMarkSource, setVolMarkSource] = useState<VolMarkSource>('manual')
+  const [pricingVol, setPricingVol] = useState(form.volatility)
   const [marketSnapshot, setMarketSnapshot] = useState<MarketSnapshot | null>(null)
   const [liveOptionQuote, setLiveOptionQuote] = useState<LiveOptionQuote | null>(null)
   const [status, setStatus] = useState('API idle')
@@ -248,22 +275,60 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [marketLoading, setMarketLoading] = useState(false)
 
-  const basePayload = useMemo(() => optionMarketPayload(form), [form])
-
   const runAnalytics = useCallback(async () => {
     setLoading(true)
     setStatus('Running analytics')
     try {
+      let nextSurfaceVol = Number.NaN
+      try {
+        const surfaceResponse = surfaceSource === 'live'
+          ? await getJson<SurfaceResult>(`/live-vol-surface/${encodeURIComponent(ticker)}?${new URLSearchParams({
+            kind: form.kind,
+            spot: String(form.spot),
+            rate: String(form.rate),
+            dividend_yield: '0',
+            query_strike: String(form.strike),
+            query_expiry: String(form.expiry),
+            max_expirations: '4',
+            strike_window: '0.35',
+          })}`)
+          : await postJson<SurfaceResult>('/vol-surface', {
+            spot: form.spot,
+            expiries: surfaceExpiries(form.expiry),
+            strikes: surfaceStrikes(form.spot, form.strike),
+            query_strike: form.strike,
+            query_expiry: form.expiry,
+          })
+        nextSurfaceVol = surfaceResponse.interpolated_vol
+        setSurfaceVol(surfaceResponse.interpolated_vol)
+        setQuoteCount(surfaceResponse.quote_count)
+        setFailedQuoteCount(surfaceResponse.failed_quote_count ?? 0)
+        setSurfaceWarnings(surfaceResponse.suspicious_quotes.length + surfaceResponse.arbitrage_warnings.length)
+        setSmile(surfaceResponse.smile)
+        setTermStructure(surfaceResponse.term_structure)
+        setSurfaceStatus(surfaceResponse.source ?? (surfaceSource === 'live' ? 'Live option chain' : 'Synthetic surface'))
+      } catch (error) {
+        setSurfaceStatus(error instanceof Error ? error.message : 'Surface unavailable')
+      }
+
+      const seedPayload = optionMarketPayload(form)
+      const manualIvResponse = await postJson<{ implied_volatility: number }>('/implied-vol', {
+        ...seedPayload,
+        option_price: marketPrice,
+      }).catch(() => ({ implied_volatility: Number.NaN }))
+      const selectedVol = resolvePricingVol(volMarkSource, {
+        manual: form.volatility,
+        market: manualIvResponse.implied_volatility,
+        chain: liveOptionQuote?.implied_volatility,
+        surface: nextSurfaceVol,
+      })
+      const basePayload = optionMarketPayload(form, selectedVol)
       const priceResponse = await postJson<{ price: number }>('/price', basePayload)
       const greeksResponse = await postJson<Greeks>('/greeks', basePayload)
       const ivResponse = await postJson<{ implied_volatility: number }>('/implied-vol', {
         ...basePayload,
         option_price: priceResponse.price,
       })
-      const manualIvResponse = await postJson<{ implied_volatility: number }>('/implied-vol', {
-        ...basePayload,
-        option_price: marketPrice,
-      }).catch(() => ({ implied_volatility: Number.NaN }))
       const modelResponse = await postJson<ModelPrices>('/model-prices', basePayload)
       const portfolioPayload = {
         positions: [
@@ -286,6 +351,7 @@ export default function App() {
       setGreeks(greeksResponse)
       setIv(ivResponse.implied_volatility)
       setManualIv(manualIvResponse.implied_volatility)
+      setPricingVol(selectedVol)
       setModelPrices(modelResponse)
       setPortfolioValue(portfolioResponse.value)
       setPortfolioGreeks(portfolioResponse.greeks)
@@ -293,42 +359,12 @@ export default function App() {
       setScenarioGreekRows(scenarioGreeksResponse.scenarios)
       setHedge(hedgeResponse)
       setStatus('API live')
-
-      try {
-        const surfaceResponse = surfaceSource === 'live'
-          ? await getJson<SurfaceResult>(`/live-vol-surface/${encodeURIComponent(ticker)}?${new URLSearchParams({
-            kind: form.kind,
-            spot: String(form.spot),
-            rate: String(form.rate),
-            dividend_yield: '0',
-            query_strike: String(form.strike),
-            query_expiry: String(form.expiry),
-            max_expirations: '4',
-            strike_window: '0.35',
-          })}`)
-          : await postJson<SurfaceResult>('/vol-surface', {
-            spot: form.spot,
-            expiries: surfaceExpiries(form.expiry),
-            strikes: surfaceStrikes(form.spot, form.strike),
-            query_strike: form.strike,
-            query_expiry: form.expiry,
-          })
-        setSurfaceVol(surfaceResponse.interpolated_vol)
-        setQuoteCount(surfaceResponse.quote_count)
-        setFailedQuoteCount(surfaceResponse.failed_quote_count ?? 0)
-        setSurfaceWarnings(surfaceResponse.suspicious_quotes.length + surfaceResponse.arbitrage_warnings.length)
-        setSmile(surfaceResponse.smile)
-        setTermStructure(surfaceResponse.term_structure)
-        setSurfaceStatus(surfaceResponse.source ?? (surfaceSource === 'live' ? 'Live option chain' : 'Synthetic surface'))
-      } catch (error) {
-        setSurfaceStatus(error instanceof Error ? error.message : 'Surface unavailable')
-      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'API unavailable')
     } finally {
       setLoading(false)
     }
-  }, [basePayload, form.expiry, form.kind, form.rate, form.spot, form.strike, marketPrice, surfaceSource, ticker])
+  }, [form, liveOptionQuote?.implied_volatility, marketPrice, surfaceSource, ticker, volMarkSource])
 
   useEffect(() => {
     void runAnalytics()
@@ -380,6 +416,7 @@ export default function App() {
   const timeValue = price - intrinsic
   const forward = form.spot * Math.exp(form.rate * form.expiry)
   const breakeven = form.kind === 'call' ? form.strike + price : form.strike - price
+  const marketBreakeven = form.kind === 'call' ? form.strike + marketPrice : form.strike - marketPrice
   const moneyness = form.spot / form.strike
   const statusLabel = moneynessStatus(form)
   const distanceToStrike = Math.abs(form.spot - form.strike)
@@ -387,6 +424,15 @@ export default function App() {
   const hedgeRange = minMax(hedge.spot_path)
   const maxStressPnl = Math.max(1, ...stress.map((row) => Math.abs(row.pnl)))
   const greekBars: Array<[string, number]> = Object.entries(greeks).map(([key, value]) => [key, value])
+  const theoreticalEdge = price - marketPrice
+  const edgePct = marketPrice > 0 ? theoreticalEdge / marketPrice : Number.NaN
+  const chainIv = liveOptionQuote?.implied_volatility
+  const bidAskSpread =
+    liveOptionQuote?.bid !== null && liveOptionQuote?.bid !== undefined &&
+      liveOptionQuote?.ask !== null && liveOptionQuote?.ask !== undefined
+      ? liveOptionQuote.ask - liveOptionQuote.bid
+      : Number.NaN
+  const volSpread = Number.isFinite(manualIv) ? manualIv - pricingVol : Number.NaN
 
   function loadSampleTrade() {
     setForm({
@@ -414,22 +460,13 @@ export default function App() {
       </header>
 
       <section className="grid">
-        <div className="panel controls">
-          <div className="panel-title">Inputs</div>
+        <div className="panel controls trade-ticket">
+          <div className="panel-title">Trade setup</div>
           <div className="ticker-control">
             <label>Ticker<input value={ticker} onChange={(event) => setTicker(event.target.value.toUpperCase())} /></label>
             <button className="secondary-button" type="button" onClick={loadMarketSnapshot} disabled={marketLoading}>
               {marketLoading ? 'Loading' : 'Load market'}
             </button>
-          </div>
-          <div className="market-snapshot">
-            <div><span>Live spot</span><strong>{marketSnapshot ? `$${format(marketSnapshot.price, 2)}` : '-'}</strong></div>
-            <div><span>Change</span><strong className={(marketSnapshot?.change ?? 0) >= 0 ? 'positive' : 'negative'}>{marketSnapshot?.change === null || marketSnapshot?.change === undefined ? '-' : `${format(marketSnapshot.change, 2)} / ${percent(marketSnapshot.change_percent ?? 0)}`}</strong></div>
-            <div><span>Option mid</span><strong>{liveOptionQuote?.mid === null || liveOptionQuote?.mid === undefined ? '-' : `$${format(liveOptionQuote.mid, 2)}`}</strong></div>
-            <div><span>Matched contract</span><strong>{liveOptionQuote ? `${liveOptionQuote.expiration} / K ${format(liveOptionQuote.matched_strike, 0)}` : '-'}</strong></div>
-            <div><span>Chain IV</span><strong>{liveOptionQuote?.implied_volatility === null || liveOptionQuote?.implied_volatility === undefined ? '-' : percent(liveOptionQuote.implied_volatility)}</strong></div>
-            <div><span>Options dates</span><strong>{marketSnapshot ? marketSnapshot.option_expirations.length : '-'}</strong></div>
-            <div><span>Market status</span><strong>{marketStatus}</strong></div>
           </div>
           <label>Type<select value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value as OptionKind })}><option value="call">Call</option><option value="put">Put</option></select></label>
           <label>Spot<input type="number" value={form.spot} onChange={(event) => setForm({ ...form, spot: Number(event.target.value) })} /></label>
@@ -438,34 +475,75 @@ export default function App() {
           <label>Rate<input type="number" step="0.005" value={form.rate} onChange={(event) => setForm({ ...form, rate: Number(event.target.value) })} /></label>
           <label>Volatility<input type="number" step="0.01" value={form.volatility} onChange={(event) => setForm({ ...form, volatility: Number(event.target.value) })} /></label>
           <label>Market price<input type="number" step="0.01" value={marketPrice} onChange={(event) => setMarketPrice(Number(event.target.value))} /></label>
+          <label>Pricing vol mark<select value={volMarkSource} onChange={(event) => setVolMarkSource(event.target.value as VolMarkSource)}>
+            <option value="manual">Manual input</option>
+            <option value="market">Market IV from price</option>
+            <option value="chain">Yahoo chain IV</option>
+            <option value="surface">Surface IV</option>
+          </select></label>
           <button className="secondary-button" type="button" onClick={loadSampleTrade}>Load sample trade</button>
-          <div className="note">Model: European Black-Scholes, continuous rates, no discrete dividends.</div>
+          <div className="note">Risk uses the selected pricing vol mark: {percent(pricingVol)}. The surface source only drives valuation when this is set to Surface IV.</div>
         </div>
 
-        <div className="panel span-3 valuation-panel">
+        <div className="panel span-2 valuation-panel">
           <div className="panel-title">Option valuation</div>
           <div className="valuation-layout">
-            <div className="summary-grid valuation-summary">
-              <div><span>Price</span><strong>${format(price, 4)}</strong></div>
-              <div><span>Status</span><strong>{statusLabel}</strong></div>
-              <div><span>Market IV</span><strong>{percent(manualIv)}</strong></div>
-              <div><span>Model IV</span><strong>{percent(iv)}</strong></div>
-              <div><span>Intrinsic</span><strong>${format(intrinsic, 4)}</strong></div>
-              <div><span>Time value</span><strong>${format(timeValue, 4)}</strong></div>
-              <div><span>Moneyness S/K</span><strong>{format(moneyness, 4)}</strong></div>
-              <div><span>Distance</span><strong>${format(distanceToStrike, 2)} / {percent(distanceToStrikePct)}</strong></div>
-              <div><span>Forward</span><strong>{format(forward, 4)}</strong></div>
-              <div><span>Breakeven</span><strong>{format(breakeven, 4)}</strong></div>
-              <div><span>API status</span><strong>{status}</strong></div>
+            <div>
+              <div className="summary-grid valuation-summary">
+                <div><span>Theoretical price</span><strong>${format(price, 4)}</strong></div>
+                <div><span>Market mid</span><strong>${format(marketPrice, 4)}</strong></div>
+                <div><span>Theo - market</span><strong className={theoreticalEdge >= 0 ? 'positive' : 'negative'}>{format(theoreticalEdge, 4)} / {optionalPercent(edgePct)}</strong></div>
+                <div><span>Status</span><strong>{statusLabel}</strong></div>
+                <div><span>Pricing vol</span><strong>{percent(pricingVol)}</strong></div>
+                <div><span>Market IV</span><strong>{optionalPercent(manualIv)}</strong></div>
+                <div><span>Intrinsic</span><strong>${format(intrinsic, 4)}</strong></div>
+                <div><span>Time value</span><strong>${format(timeValue, 4)}</strong></div>
+                <div><span>Moneyness S/K</span><strong>{format(moneyness, 4)}</strong></div>
+                <div><span>Distance</span><strong>${format(distanceToStrike, 2)} / {percent(distanceToStrikePct)}</strong></div>
+                <div><span>Forward</span><strong>{format(forward, 4)}</strong></div>
+                <div><span>Model breakeven</span><strong>{format(breakeven, 4)}</strong></div>
+              </div>
+              <div className="valuation-foot">
+                <span>Market breakeven {format(marketBreakeven, 4)}</span>
+                <span>Model IV check {percent(iv)}</span>
+                <span>{status}</span>
+              </div>
             </div>
             <PayoffChart kind={form.kind} spot={form.spot} strike={form.strike} premium={price} breakeven={breakeven} />
           </div>
         </div>
 
-        <div className="panel span-2">
-          <div className="panel-title">Surface query</div>
-          <label className="surface-source">Source<select value={surfaceSource} onChange={(event) => setSurfaceSource(event.target.value as SurfaceSource)}><option value="synthetic">Synthetic</option><option value="live">Live option chain</option></select></label>
+        <div className="panel market-panel">
+          <div className="panel-title">Market quote</div>
+          <div className="quote-stack">
+            <div><span>Live spot</span><strong>{optionalMoney(marketSnapshot?.price)}</strong></div>
+            <div><span>Stock change</span><strong className={(marketSnapshot?.change ?? 0) >= 0 ? 'positive' : 'negative'}>{marketSnapshot?.change === null || marketSnapshot?.change === undefined ? '-' : `${format(marketSnapshot.change, 2)} / ${percent(marketSnapshot.change_percent ?? 0)}`}</strong></div>
+            <div><span>Matched contract</span><strong>{liveOptionQuote ? `${liveOptionQuote.expiration} ${liveOptionQuote.kind.toUpperCase()} ${format(liveOptionQuote.matched_strike, 0)}` : '-'}</strong></div>
+            <div><span>Bid / ask</span><strong>{optionalMoney(liveOptionQuote?.bid)} / {optionalMoney(liveOptionQuote?.ask)}</strong></div>
+            <div><span>Mid / last</span><strong>{optionalMoney(liveOptionQuote?.mid)} / {optionalMoney(liveOptionQuote?.last_price)}</strong></div>
+            <div><span>Spread</span><strong>{optionalMoney(bidAskSpread)}</strong></div>
+            <div><span>Chain IV</span><strong>{optionalPercent(chainIv)}</strong></div>
+            <div><span>Volume / OI</span><strong>{liveOptionQuote ? `${liveOptionQuote.volume ?? '-'} / ${liveOptionQuote.open_interest ?? '-'}` : '-'}</strong></div>
+            <div><span>Options dates</span><strong>{marketSnapshot ? marketSnapshot.option_expirations.length : '-'}</strong></div>
+            <div><span>Status</span><strong>{marketStatus}</strong></div>
+          </div>
+        </div>
+
+        <div className="panel span-2 vol-panel">
+          <div className="panel-title">Volatility mark and surface</div>
+          <div className="source-controls">
+            <label>Surface source<select value={surfaceSource} onChange={(event) => setSurfaceSource(event.target.value as SurfaceSource)}><option value="synthetic">Synthetic grid</option><option value="live">Live option chain</option></select></label>
+            <label>Pricing source<select value={volMarkSource} onChange={(event) => setVolMarkSource(event.target.value as VolMarkSource)}>
+              <option value="manual">Manual input</option>
+              <option value="market">Market IV from price</option>
+              <option value="chain">Yahoo chain IV</option>
+              <option value="surface">Surface IV</option>
+            </select></label>
+          </div>
           <div className="metric-row"><span>Interpolated IV</span><strong>{percent(surfaceVol)}</strong></div>
+          <div className="metric-row"><span>Pricing IV used</span><strong>{percent(pricingVol)}</strong></div>
+          <div className="metric-row"><span>Market - pricing vol</span><strong>{optionalPercent(volSpread)}</strong></div>
+          <div className="metric-row"><span>Chain IV</span><strong>{optionalPercent(chainIv)}</strong></div>
           <div className="metric-row"><span>Query point</span><strong>K {format(form.strike, 2)} / T {format(form.expiry, 2)}</strong></div>
           <div className="metric-row"><span>Quote grid</span><strong>{quoteCount} quotes</strong></div>
           <div className="metric-row"><span>Failed live quotes</span><strong>{surfaceSource === 'live' ? failedQuoteCount : '-'}</strong></div>
