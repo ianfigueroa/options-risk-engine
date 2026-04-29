@@ -117,8 +117,9 @@ def live_vol_surface(
     max_expirations: int = Query(4, ge=1, le=8),
     strike_window: float = Query(0.30, gt=0.0, le=2.0),
 ) -> dict[str, Any]:
+    effective_window = min(2.0, max(strike_window, abs(query_strike / spot - 1.0) + 0.05))
     raw_quotes = _safe(
-        lambda: fetch_option_chain_quotes(ticker.upper(), kind, spot, max_expirations, strike_window)
+        lambda: fetch_option_chain_quotes(ticker.upper(), kind, spot, query_expiry, max_expirations, effective_window)
     )
     return _safe(
         lambda: _live_surface_response(

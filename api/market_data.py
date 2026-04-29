@@ -98,6 +98,7 @@ def fetch_option_chain_quotes(
     ticker: str,
     kind: str,
     spot: float,
+    query_expiry: float,
     max_expirations: int,
     strike_window: float,
 ) -> list[dict[str, Any]]:
@@ -109,9 +110,14 @@ def fetch_option_chain_quotes(
 
     symbol = ticker.upper()
     instrument = yf.Ticker(symbol)
-    expirations = list(getattr(instrument, "options", []) or [])[:max_expirations]
-    if not expirations:
+    available_expirations = list(getattr(instrument, "options", []) or [])
+    if not available_expirations:
         raise ValueError(f"No option expirations were available for ticker {symbol}.")
+    target_date = date.today() + timedelta(days=max(1, round(query_expiry * 365.0)))
+    expirations = sorted(
+        available_expirations,
+        key=lambda expiration: abs(date.fromisoformat(expiration) - target_date),
+    )[:max_expirations]
 
     lower_strike = spot * max(0.0, 1.0 - strike_window)
     upper_strike = spot * (1.0 + strike_window)

@@ -199,8 +199,22 @@ def test_option_quote_rejects_bad_strike():
 
 
 def test_live_vol_surface_endpoint_uses_chain_mids(monkeypatch):
-    def fake_chain_quotes(ticker: str, kind: str, spot: float, max_expirations: int, strike_window: float):
-        assert (ticker, kind, spot, max_expirations, strike_window) == ("AAPL", "call", 100.0, 2, 0.25)
+    def fake_chain_quotes(
+        ticker: str,
+        kind: str,
+        spot: float,
+        query_expiry: float,
+        max_expirations: int,
+        strike_window: float,
+    ):
+        assert (ticker, kind, spot, query_expiry, max_expirations, strike_window) == (
+            "AAPL",
+            "call",
+            100.0,
+            0.75,
+            2,
+            0.25,
+        )
         rows = []
         for expiry in [0.5, 1.0]:
             for strike in [90.0, 100.0, 110.0]:
