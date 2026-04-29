@@ -94,6 +94,44 @@ def fetch_nearest_option_quote(ticker: str, kind: str, strike: float, expiry_yea
     }
 
 
+def fetch_option_chain_quotes(
+    ticker: str,
+    kind: str,
+    spot: float,
+    max_expirations: int,
+    strike_window: float,
+) -> list[dict[str, Any]]:
+    """Fetch option-chain quotes across expirations near the current spot."""
+    try:
+        import yfinance as yf
+    except ImportError as exc:
+        raise ValueError("Live option chains require installing the yfinance dependency.") from exc
+
+    symbol = ticker.upper()
+    instrument = yf.Ticker(symbol)
+    expirations = list(getattr(instrument, "options", []) or [])[:max_expirations]
+    if not expirations:
+        raise ValueError(f"No option expirations were available for ticker {symbol}.")
+
+    lower_strike = spot * max(0.0, 1.0 - strike_window)
+    upper_strike = spot * (1.0 + strike_window)
+    rows: list[dict[str, Any]] = []
+    for expiration in expirations:
+        chain = instrument.option_chain(expiration)
+        quotes = chain.calls if kind == "call" else chain.puts
+        if quotes.empty:
+            continue
+        window = quotes[(quotes["strike"] >= lower_strike) & (quotes["strike"] <= upper_strike)]
+        if window.empty:
+            window = quotes.loc[[(quotes["strike"] - spot).abs().idxmin()]]
+        expiry_years = max(1.0 / 365.0, (date.fromisoformat(expiration) - date.today()).days / 365.0)
+        for _, row in window.iterrows():
+            rows.append(_option_chain_row(expiration, expiry_years, row))
+    if not rows:
+        raise ValueError(f"No usable {kind} option quotes were available for ticker {symbol}.")
+    return rows
+
+
 def _first_number(primary: Any, primary_keys: list[str], fallback: dict[str, Any], fallback_keys: list[str]) -> float | None:
     for key in primary_keys:
         value = _get_value(primary, key)
@@ -125,3 +163,21 @@ def _optional_int(value: Any) -> int | None:
     if isinstance(value, int | float) and value == value:
         return int(value)
     return None
+
+
+def _option_chain_row(expiration: str, expiry_years: float, row: Any) -> dict[str, Any]:
+    bid = _optional_float(row.get("bid"))
+    ask = _optional_float(row.get("ask"))
+    last_price = _optional_float(row.get("lastPrice"))
+    mid = (bid + ask) / 2.0 if bid is not None and ask is not None and bid > 0.0 and ask > 0.0 else last_price
+    return {
+        "expiration": expiration,
+        "expiry_years": expiry_years,
+        "strike": float(row["strike"]),
+        "bid": bid,
+        "ask": ask,
+        "last_price": last_price,
+        "mid": mid,
+        "volume": _optional_int(row.get("volume")),
+        "open_interest": _optional_int(row.get("openInterest")),
+    }

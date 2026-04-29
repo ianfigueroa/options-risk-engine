@@ -1,7 +1,9 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from api import main
 from api.main import app
+from options_lab import analytics as ol
 
 
 client = TestClient(app)
@@ -194,3 +196,45 @@ def test_option_quote_rejects_bad_strike():
     response = client.get("/option-quotes/AAPL?kind=call&strike=-1&expiry_years=0.25")
 
     assert response.status_code == 422
+
+
+def test_live_vol_surface_endpoint_uses_chain_mids(monkeypatch):
+    def fake_chain_quotes(ticker: str, kind: str, spot: float, max_expirations: int, strike_window: float):
+        assert (ticker, kind, spot, max_expirations, strike_window) == ("AAPL", "call", 100.0, 2, 0.25)
+        rows = []
+        for expiry in [0.5, 1.0]:
+            for strike in [90.0, 100.0, 110.0]:
+                contract = ol.OptionContract(kind="call", strike=strike, time_to_expiry=expiry)
+                market = ol.MarketData(spot=100.0, rate=0.04, volatility=0.25)
+                mid = ol.black_scholes_price(contract, market)
+                rows.append(
+                    {
+                        "expiration": f"2026-{int(expiry * 12):02d}-19",
+                        "expiry_years": expiry,
+                        "strike": strike,
+                        "bid": mid - 0.05,
+                        "ask": mid + 0.05,
+                        "last_price": mid,
+                        "mid": mid,
+                        "volume": 10,
+                        "open_interest": 100,
+                    }
+                )
+        return rows
+
+    monkeypatch.setattr(main, "fetch_option_chain_quotes", fake_chain_quotes)
+
+    response = client.get(
+        "/live-vol-surface/AAPL"
+        "?kind=call&spot=100&rate=0.04&query_strike=100&query_expiry=0.75"
+        "&max_expirations=2&strike_window=0.25"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "Yahoo Finance option chain"
+    assert body["quote_count"] == 6
+    assert body["failed_quote_count"] == 0
+    assert body["interpolated_vol"] == pytest.approx(0.25, abs=1e-6)
+    assert len(body["smile"]) == 3
+    assert len(body["term_structure"]) == 2
