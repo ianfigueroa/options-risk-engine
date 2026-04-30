@@ -370,6 +370,17 @@ export default function App() {
     void runAnalytics()
   }, [runAnalytics])
 
+  useEffect(() => {
+    if (!liveOptionQuote) return
+    const quoteExpiry = yearsUntilExpiration(liveOptionQuote.expiration)
+    const strikeMatches = Math.abs(liveOptionQuote.matched_strike - form.strike) < 0.001
+    const expiryMatches = quoteExpiry !== null && Math.abs(quoteExpiry - form.expiry) < 3 / 365
+    if (liveOptionQuote.kind !== form.kind || !strikeMatches || !expiryMatches) {
+      setLiveOptionQuote(null)
+      setMarketStatus('Contract changed; reload market quote')
+    }
+  }, [form.expiry, form.kind, form.strike, liveOptionQuote])
+
   const loadMarketSnapshot = useCallback(async () => {
     const symbol = ticker.trim().toUpperCase()
     if (!symbol) return
@@ -434,6 +445,13 @@ export default function App() {
       : Number.NaN
   const volSpread = Number.isFinite(manualIv) ? manualIv - pricingVol : Number.NaN
 
+  function updateTicker(value: string) {
+    setTicker(value.toUpperCase())
+    setMarketSnapshot(null)
+    setLiveOptionQuote(null)
+    setMarketStatus('Ticker changed; load market')
+  }
+
   function loadSampleTrade() {
     setForm({
       kind: 'call',
@@ -444,6 +462,9 @@ export default function App() {
       volatility: 0.28,
     })
     setMarketPrice(9.15)
+    setMarketSnapshot(null)
+    setLiveOptionQuote(null)
+    setMarketStatus('Sample trade loaded')
   }
 
   return (
@@ -463,7 +484,7 @@ export default function App() {
         <div className="panel controls trade-ticket">
           <div className="panel-title">Trade setup</div>
           <div className="ticker-control">
-            <label>Ticker<input value={ticker} onChange={(event) => setTicker(event.target.value.toUpperCase())} /></label>
+            <label>Ticker<input value={ticker} onChange={(event) => updateTicker(event.target.value)} /></label>
             <button className="secondary-button" type="button" onClick={loadMarketSnapshot} disabled={marketLoading}>
               {marketLoading ? 'Loading' : 'Load market'}
             </button>
