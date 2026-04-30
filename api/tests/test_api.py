@@ -252,3 +252,59 @@ def test_live_vol_surface_endpoint_uses_chain_mids(monkeypatch):
     assert body["interpolated_vol"] == pytest.approx(0.25, abs=1e-6)
     assert len(body["smile"]) == 3
     assert len(body["term_structure"]) == 2
+
+
+def test_option_chain_endpoint_returns_clickable_rows(monkeypatch):
+    def fake_chain_quotes(
+        ticker: str,
+        kind: str,
+        spot: float,
+        query_expiry: float,
+        max_expirations: int,
+        strike_window: float,
+    ):
+        assert (ticker, kind, spot, query_expiry, max_expirations, strike_window) == (
+            "MSFT",
+            "put",
+            400.0,
+            0.5,
+            1,
+            0.20,
+        )
+        return [
+            {
+                "expiration": "2026-11-20",
+                "expiry_years": 0.55,
+                "strike": 390.0,
+                "bid": 18.5,
+                "ask": 19.1,
+                "last_price": 18.8,
+                "mid": 18.8,
+                "implied_volatility": 0.29,
+                "volume": 45,
+                "open_interest": 1200,
+            },
+            {
+                "expiration": "2026-11-20",
+                "expiry_years": 0.55,
+                "strike": 400.0,
+                "bid": 22.0,
+                "ask": 22.8,
+                "last_price": 22.4,
+                "mid": 22.4,
+                "implied_volatility": 0.30,
+                "volume": 80,
+                "open_interest": 1800,
+            },
+        ]
+
+    monkeypatch.setattr(main, "fetch_option_chain_quotes", fake_chain_quotes)
+
+    response = client.get("/option-chain/MSFT?kind=put&spot=400&expiry_years=0.5&strike_window=0.2")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "Yahoo Finance option chain"
+    assert body["quote_count"] == 2
+    assert body["rows"][0]["strike"] == 390.0
+    assert body["rows"][1]["mid"] == 22.4

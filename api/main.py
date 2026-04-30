@@ -105,6 +105,33 @@ def option_quote(
     return _safe(lambda: fetch_nearest_option_quote(ticker.upper(), kind, strike, expiry_years))
 
 
+@app.get("/option-chain/{ticker}")
+def option_chain(
+    ticker: TickerSymbol,
+    kind: Literal["call", "put"] = Query(...),
+    spot: float = Query(..., gt=0.0),
+    expiry_years: float = Query(..., gt=0.0),
+    strike_window: float = Query(0.20, gt=0.0, le=2.0),
+) -> dict[str, Any]:
+    rows = _safe(
+        lambda: fetch_option_chain_quotes(
+            ticker.upper(),
+            kind,
+            spot,
+            expiry_years,
+            max_expirations=1,
+            strike_window=strike_window,
+        )
+    )
+    return {
+        "source": "Yahoo Finance option chain",
+        "ticker": ticker.upper(),
+        "kind": kind,
+        "quote_count": len(rows),
+        "rows": sorted(rows, key=lambda row: float(row["strike"])),
+    }
+
+
 @app.get("/live-vol-surface/{ticker}")
 def live_vol_surface(
     ticker: TickerSymbol,

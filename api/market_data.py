@@ -301,6 +301,7 @@ def _option_chain_row(expiration: str, expiry_years: float, row: Any) -> dict[st
         "ask": ask,
         "last_price": last_price,
         "mid": mid,
+        "implied_volatility": _optional_float(row.get("impliedVolatility")),
         "volume": _optional_int(row.get("volume")),
         "open_interest": _optional_int(row.get("openInterest")),
     }
