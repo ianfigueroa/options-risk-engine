@@ -1,4 +1,14 @@
+import { useState, type PointerEvent } from 'react'
+
 type OptionKind = 'call' | 'put'
+type PayoffPoint = {
+  terminalSpot: number
+  payoff: number
+  profit: number
+  x: number
+  payoffY: number
+  profitY: number
+}
 
 function format(value: number, digits = 4) {
   if (!Number.isFinite(value)) return '-'
@@ -107,11 +117,32 @@ export function PayoffChart({
   const toPoints = (values: number[]) =>
     values.map((value, index) => `${xOf(spots[index])},${yOf(value)}`).join(' ')
   const zeroY = yOf(0)
+  const [selectedPoint, setSelectedPoint] = useState<PayoffPoint | null>(null)
   const markerRows: Array<[string, number, string]> = [
     ['Spot', spot, `$${format(spot, 2)}`],
     ['Strike', strike, `$${format(strike, 2)}`],
     ['B/E', breakeven, `$${format(breakeven, 2)}`],
   ]
+  const inspectAt = (terminalSpot: number): PayoffPoint => {
+    const boundedSpot = Math.min(high, Math.max(low, terminalSpot))
+    const inspectedPayoff = kind === 'call' ? Math.max(boundedSpot - strike, 0) : Math.max(strike - boundedSpot, 0)
+    const inspectedProfit = inspectedPayoff - premium
+    return {
+      terminalSpot: boundedSpot,
+      payoff: inspectedPayoff,
+      profit: inspectedProfit,
+      x: xOf(boundedSpot),
+      payoffY: yOf(inspectedPayoff),
+      profitY: yOf(inspectedProfit),
+    }
+  }
+  const inspectedPoint = selectedPoint ?? inspectAt(spot)
+
+  function updateInspection(event: PointerEvent<SVGSVGElement>) {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const xPercent = ((event.clientX - rect.left) / rect.width) * 100
+    setSelectedPoint(inspectAt(low + ((high - low) * xPercent) / 100))
+  }
 
   return (
     <div className="payoff-wrap">
@@ -119,16 +150,31 @@ export function PayoffChart({
         <span>Expiration payoff and profit</span>
         <span>{kind === 'call' ? 'Long call' : 'Long put'} using current model premium</span>
       </div>
-      <svg viewBox="0 0 100 100" className="payoff-chart" role="img" aria-label="Option payoff and profit at expiration">
+      <svg
+        viewBox="0 0 100 100"
+        className="payoff-chart interactive-chart"
+        role="img"
+        aria-label="Option payoff and profit at expiration"
+        onClick={updateInspection}
+        onPointerMove={updateInspection}
+      >
         <line x1="4" x2="98" y1={zeroY} y2={zeroY} className="axis-line" />
         {markerRows.map(([label, value]) => (
           <g key={label}>
             <line x1={xOf(value)} x2={xOf(value)} y1="10" y2="92" className="marker-line" />
           </g>
         ))}
+        <line x1={inspectedPoint.x} x2={inspectedPoint.x} y1="8" y2="93" className="inspection-line" />
+        <circle cx={inspectedPoint.x} cy={inspectedPoint.payoffY} r="1.4" className="payoff-dot" />
+        <circle cx={inspectedPoint.x} cy={inspectedPoint.profitY} r="1.4" className="profit-dot" />
         <polyline points={toPoints(payoff)} className="payoff-line" />
         <polyline points={toPoints(profit)} className="profit-line" />
       </svg>
+      <div className="inspection-readout">
+        <span>Terminal ${format(inspectedPoint.terminalSpot, 2)}</span>
+        <span>Payoff ${format(inspectedPoint.payoff, 2)}</span>
+        <span>Profit ${format(inspectedPoint.profit, 2)}</span>
+      </div>
       <div className="payoff-legend">
         <span><i className="payoff-key" />Payoff</span>
         <span><i className="profit-key" />Profit after premium</span>

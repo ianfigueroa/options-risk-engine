@@ -303,6 +303,9 @@ select:focus {
   border: 1px solid #2b3036;
   background: #101215;
 }
+.interactive-chart {
+  cursor: crosshair;
+}
 .axis-line {
   stroke: #4b535e;
   stroke-width: 0.5;
@@ -324,6 +327,32 @@ select:focus {
 }
 .profit-line {
   stroke: #6ea778;
+}
+.inspection-line {
+  stroke: #d7dde5;
+  stroke-dasharray: 2 2;
+  stroke-width: 0.35;
+}
+.payoff-dot {
+  fill: #90a4ba;
+}
+.profit-dot {
+  fill: #6ea778;
+}
+.inspection-readout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+.inspection-readout span {
+  padding: 6px 8px;
+  border: 1px solid #2b3036;
+  border-radius: 3px;
+  color: #dce2ea;
+  background: #15191e;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
 }
 .payoff-legend {
   align-items: center;
@@ -556,6 +585,7 @@ th:last-child {
   .source-controls,
   .stress-heatmap,
   .strike-presets,
+  .inspection-readout,
   .summary-grid,
   .summary-grid.compact {
     grid-template-columns: 1fr;
