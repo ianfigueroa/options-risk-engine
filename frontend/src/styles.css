@@ -180,10 +180,6 @@ select:focus {
   background: #13161a;
   font-size: 0.82rem;
 }
-.trade-ticket {
-  position: sticky;
-  top: 16px;
-}
 .quote-stack {
   display: grid;
   gap: 0;
@@ -560,9 +556,6 @@ th:last-child {
   }
   .payoff-chart {
     height: 240px;
-  }
-  .trade-ticket {
-    position: static;
   }
   .payoff-markers {
     align-items: flex-start;
