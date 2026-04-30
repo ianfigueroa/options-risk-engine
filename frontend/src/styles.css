@@ -85,10 +85,11 @@ h1 {
   display: grid;
   grid-template-columns: 1.05fr 1fr 1fr 1fr;
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
 }
 .panel {
   min-width: 0;
+  height: 100%;
   padding: 14px;
   border: 1px solid #2b3036;
   border-radius: 4px;
