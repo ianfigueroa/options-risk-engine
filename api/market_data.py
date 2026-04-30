@@ -2,39 +2,141 @@
 
 from __future__ import annotations
 
+import copy
+import os
+import threading
+import time
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, Callable, Hashable, TypeVar
+
+
+T = TypeVar("T")
+YAHOO_MIN_REQUEST_INTERVAL_SECONDS = float(os.getenv("OPTIONS_YAHOO_MIN_INTERVAL_SECONDS", "2.5"))
+MARKET_SNAPSHOT_TTL_SECONDS = float(os.getenv("OPTIONS_MARKET_SNAPSHOT_TTL_SECONDS", "60"))
+OPTION_QUOTE_TTL_SECONDS = float(os.getenv("OPTIONS_OPTION_QUOTE_TTL_SECONDS", "120"))
+OPTION_CHAIN_TTL_SECONDS = float(os.getenv("OPTIONS_OPTION_CHAIN_TTL_SECONDS", "300"))
+_yahoo_lock = threading.Lock()
+_last_yahoo_request = 0.0
+
+
+class TtlCache:
+    """Small in-process TTL cache for live market data responses."""
+
+    def __init__(self, now: Callable[[], float] = time.monotonic):
+        self._now = now
+        self._lock = threading.RLock()
+        self._values: dict[tuple[Hashable, ...], tuple[float, Any]] = {}
+
+    def get_or_load(self, key: tuple[Hashable, ...], ttl_seconds: float, loader: Callable[[], T]) -> T:
+        now = self._now()
+        with self._lock:
+            cached = self._values.get(key)
+            if cached is not None and now - cached[0] <= ttl_seconds:
+                return copy.deepcopy(cached[1])
+
+        value = loader()
+        with self._lock:
+            self._values[key] = (self._now(), copy.deepcopy(value))
+        return copy.deepcopy(value)
+
+
+_live_cache = TtlCache()
 
 
 def fetch_market_snapshot(ticker: str) -> dict[str, Any]:
     """Fetch a compact stock quote snapshot from Yahoo Finance via yfinance."""
+    symbol = ticker.upper()
+    return _live_cache.get_or_load(
+        ("snapshot", symbol),
+        MARKET_SNAPSHOT_TTL_SECONDS,
+        lambda: _fetch_market_snapshot_uncached(symbol),
+    )
+
+
+def fetch_nearest_option_quote(ticker: str, kind: str, strike: float, expiry_years: float) -> dict[str, Any]:
+    """Fetch the closest listed option quote for a target strike and expiry."""
+    symbol = ticker.upper()
+    rounded_strike = round(strike, 4)
+    rounded_expiry = round(expiry_years, 6)
+    return _live_cache.get_or_load(
+        ("option_quote", symbol, kind, rounded_strike, rounded_expiry),
+        OPTION_QUOTE_TTL_SECONDS,
+        lambda: _fetch_nearest_option_quote_uncached(symbol, kind, strike, expiry_years),
+    )
+
+
+def fetch_option_chain_quotes(
+    ticker: str,
+    kind: str,
+    spot: float,
+    query_expiry: float,
+    max_expirations: int,
+    strike_window: float,
+) -> list[dict[str, Any]]:
+    """Fetch option-chain quotes across expirations near the current spot."""
+    symbol = ticker.upper()
+    return _live_cache.get_or_load(
+        (
+            "option_chain",
+            symbol,
+            kind,
+            round(spot, 2),
+            round(query_expiry, 6),
+            max_expirations,
+            round(strike_window, 4),
+        ),
+        OPTION_CHAIN_TTL_SECONDS,
+        lambda: _fetch_option_chain_quotes_uncached(
+            symbol,
+            kind,
+            spot,
+            query_expiry,
+            max_expirations,
+            strike_window,
+        ),
+    )
+
+
+def _fetch_market_snapshot_uncached(symbol: str) -> dict[str, Any]:
     try:
         import yfinance as yf
     except ImportError as exc:
         raise ValueError("Live market data requires installing the yfinance dependency.") from exc
 
-    symbol = ticker.upper()
+    _wait_for_yahoo_slot()
     instrument = yf.Ticker(symbol)
+    _wait_for_yahoo_slot()
     fast_info = instrument.fast_info
-    info = getattr(instrument, "info", {}) or {}
 
     price = _first_number(
         fast_info,
         ["last_price", "lastPrice", "regular_market_price"],
-        info,
+        {},
         ["regularMarketPrice", "currentPrice"],
     )
     previous_close = _first_number(
         fast_info,
         ["previous_close", "previousClose", "regular_market_previous_close"],
-        info,
+        {},
         ["regularMarketPreviousClose", "previousClose"],
     )
+    info: dict[str, Any] = {}
+    if price is None or previous_close is None:
+        _wait_for_yahoo_slot()
+        info = getattr(instrument, "info", {}) or {}
+        price = price if price is not None else _first_number({}, [], info, ["regularMarketPrice", "currentPrice"])
+        previous_close = previous_close if previous_close is not None else _first_number(
+            {},
+            [],
+            info,
+            ["regularMarketPreviousClose", "previousClose"],
+        )
     if price is None or price <= 0.0:
         raise ValueError(f"No live price was available for ticker {symbol}.")
 
     change = None if previous_close is None else price - previous_close
     change_percent = None if previous_close in (None, 0.0) else change / previous_close
+    _wait_for_yahoo_slot()
     expirations = list(getattr(instrument, "options", []) or [])
 
     return {
@@ -50,21 +152,22 @@ def fetch_market_snapshot(ticker: str) -> dict[str, Any]:
     }
 
 
-def fetch_nearest_option_quote(ticker: str, kind: str, strike: float, expiry_years: float) -> dict[str, Any]:
-    """Fetch the closest listed option quote for a target strike and expiry."""
+def _fetch_nearest_option_quote_uncached(symbol: str, kind: str, strike: float, expiry_years: float) -> dict[str, Any]:
     try:
         import yfinance as yf
     except ImportError as exc:
         raise ValueError("Live option quotes require installing the yfinance dependency.") from exc
 
-    symbol = ticker.upper()
+    _wait_for_yahoo_slot()
     instrument = yf.Ticker(symbol)
+    _wait_for_yahoo_slot()
     expirations = list(getattr(instrument, "options", []) or [])
     if not expirations:
         raise ValueError(f"No option expirations were available for ticker {symbol}.")
 
     target_date = date.today() + timedelta(days=max(0, round(expiry_years * 365.0)))
     expiration = min(expirations, key=lambda value: abs(date.fromisoformat(value) - target_date))
+    _wait_for_yahoo_slot()
     chain = instrument.option_chain(expiration)
     quotes = chain.calls if kind == "call" else chain.puts
     if quotes.empty:
@@ -94,22 +197,22 @@ def fetch_nearest_option_quote(ticker: str, kind: str, strike: float, expiry_yea
     }
 
 
-def fetch_option_chain_quotes(
-    ticker: str,
+def _fetch_option_chain_quotes_uncached(
+    symbol: str,
     kind: str,
     spot: float,
     query_expiry: float,
     max_expirations: int,
     strike_window: float,
 ) -> list[dict[str, Any]]:
-    """Fetch option-chain quotes across expirations near the current spot."""
     try:
         import yfinance as yf
     except ImportError as exc:
         raise ValueError("Live option chains require installing the yfinance dependency.") from exc
 
-    symbol = ticker.upper()
+    _wait_for_yahoo_slot()
     instrument = yf.Ticker(symbol)
+    _wait_for_yahoo_slot()
     available_expirations = list(getattr(instrument, "options", []) or [])
     if not available_expirations:
         raise ValueError(f"No option expirations were available for ticker {symbol}.")
@@ -123,6 +226,7 @@ def fetch_option_chain_quotes(
     upper_strike = spot * (1.0 + strike_window)
     rows: list[dict[str, Any]] = []
     for expiration in expirations:
+        _wait_for_yahoo_slot()
         chain = instrument.option_chain(expiration)
         quotes = chain.calls if kind == "call" else chain.puts
         if quotes.empty:
@@ -136,6 +240,19 @@ def fetch_option_chain_quotes(
     if not rows:
         raise ValueError(f"No usable {kind} option quotes were available for ticker {symbol}.")
     return rows
+
+
+def _wait_for_yahoo_slot() -> None:
+    global _last_yahoo_request
+    if YAHOO_MIN_REQUEST_INTERVAL_SECONDS <= 0.0:
+        return
+    with _yahoo_lock:
+        now = time.monotonic()
+        wait_seconds = _last_yahoo_request + YAHOO_MIN_REQUEST_INTERVAL_SECONDS - now
+        if wait_seconds > 0.0:
+            time.sleep(wait_seconds)
+            now = time.monotonic()
+        _last_yahoo_request = now
 
 
 def _first_number(primary: Any, primary_keys: list[str], fallback: dict[str, Any], fallback_keys: list[str]) -> float | None:
