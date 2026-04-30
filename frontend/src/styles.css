@@ -127,6 +127,26 @@ h1 {
   gap: 10px;
   align-items: end;
 }
+.strike-presets {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.strike-presets button {
+  min-height: 30px;
+  padding: 0 6px;
+  border: 1px solid #303741;
+  border-radius: 3px;
+  color: #d8dee6;
+  background: #121519;
+  cursor: pointer;
+  font-size: 0.74rem;
+}
+.strike-presets button:hover {
+  border-color: #59616d;
+  background: #1c2026;
+}
 .market-snapshot {
   display: grid;
   grid-column: 1 / -1;
@@ -535,6 +555,7 @@ th:last-child {
   .market-snapshot,
   .source-controls,
   .stress-heatmap,
+  .strike-presets,
   .summary-grid,
   .summary-grid.compact {
     grid-template-columns: 1fr;

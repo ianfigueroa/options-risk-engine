@@ -230,6 +230,30 @@ function surfaceExpiries(expiry: number) {
     .sort((left, right) => left - right)
 }
 
+function strikeStep(spot: number) {
+  if (spot >= 250) return 5
+  if (spot >= 100) return 2.5
+  if (spot >= 25) return 1
+  return 0.5
+}
+
+function roundedStrike(rawStrike: number, spot: number) {
+  const step = strikeStep(spot)
+  return Math.max(step, Number((Math.round(rawStrike / step) * step).toFixed(4)))
+}
+
+function presetStrike(kind: OptionKind, spot: number, preset: 'atm' | 'otm5' | 'otm10' | 'itm5' | 'itm10') {
+  const direction = kind === 'call' ? 1 : -1
+  const multipliers = {
+    atm: 1,
+    otm5: 1 + direction * 0.05,
+    otm10: 1 + direction * 0.10,
+    itm5: 1 - direction * 0.05,
+    itm10: 1 - direction * 0.10,
+  }
+  return roundedStrike(spot * multipliers[preset], spot)
+}
+
 function yearsUntilExpiration(expiration: string) {
   const expiryDate = new Date(`${expiration}T00:00:00`)
   if (Number.isNaN(expiryDate.getTime())) return null
@@ -452,6 +476,13 @@ export default function App() {
     setMarketStatus('Ticker changed; load market')
   }
 
+  function setStrikePreset(preset: 'atm' | 'otm5' | 'otm10' | 'itm5' | 'itm10') {
+    setForm((current) => ({
+      ...current,
+      strike: presetStrike(current.kind, current.spot, preset),
+    }))
+  }
+
   function loadSampleTrade() {
     setForm({
       kind: 'call',
@@ -492,6 +523,13 @@ export default function App() {
           <label>Type<select value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value as OptionKind })}><option value="call">Call</option><option value="put">Put</option></select></label>
           <label>Spot<input type="number" value={form.spot} onChange={(event) => setForm({ ...form, spot: Number(event.target.value) })} /></label>
           <label>Strike<input type="number" value={form.strike} onChange={(event) => setForm({ ...form, strike: Number(event.target.value) })} /></label>
+          <div className="strike-presets">
+            <button type="button" onClick={() => setStrikePreset('atm')}>ATM</button>
+            <button type="button" onClick={() => setStrikePreset('otm5')}>5% OTM</button>
+            <button type="button" onClick={() => setStrikePreset('otm10')}>10% OTM</button>
+            <button type="button" onClick={() => setStrikePreset('itm5')}>5% ITM</button>
+            <button type="button" onClick={() => setStrikePreset('itm10')}>10% ITM</button>
+          </div>
           <label>Expiry years<input type="number" step="0.05" value={form.expiry} onChange={(event) => setForm({ ...form, expiry: Number(event.target.value) })} /></label>
           <label>Rate<input type="number" step="0.005" value={form.rate} onChange={(event) => setForm({ ...form, rate: Number(event.target.value) })} /></label>
           <label>Volatility<input type="number" step="0.01" value={form.volatility} onChange={(event) => setForm({ ...form, volatility: Number(event.target.value) })} /></label>
