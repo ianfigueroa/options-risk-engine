@@ -1,91 +1,24 @@
 import { Play, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { BarChart, HedgeChart, MetricTable, MiniLine, OptionChainTable, PayoffChart, type OptionChainLadderRow } from './components'
+import { AnalyticsTabs } from './AnalyticsTabs'
+import { OptionChainTable, PayoffChart, type OptionChainLadderRow } from './components'
+import type {
+  FormState,
+  Greeks,
+  HedgeResult,
+  LiveOptionQuote,
+  MarketSnapshot,
+  ModelPrices,
+  OptionKind,
+  ScenarioGreekRow,
+  StressRow,
+  SurfaceResult,
+  SurfaceSource,
+  TabId,
+  VolMarkSource,
+} from './domainTypes'
+import { format, optionalMoney, optionalPercent, percent } from './formatters'
 import { presetStrike, yearsUntilExpiration } from './marketUtils'
-
-type OptionKind = 'call' | 'put'
-type SurfaceSource = 'synthetic' | 'live'
-type VolMarkSource = 'manual' | 'market' | 'chain' | 'surface'
-
-type FormState = {
-  kind: OptionKind
-  spot: number
-  strike: number
-  expiry: number
-  rate: number
-  volatility: number
-}
-
-type Greeks = {
-  delta: number
-  gamma: number
-  vega: number
-  theta: number
-  rho: number
-}
-
-type StressRow = {
-  label: string
-  scenario_value?: number
-  pnl: number
-}
-
-type ScenarioGreekRow = Greeks & { label: string }
-
-type ModelPrices = {
-  black_scholes: number
-  binomial: number
-  monte_carlo: number
-  local_vol: number
-  stochastic_vol: number
-}
-
-type HedgeResult = {
-  terminal_spot: number
-  hedging_error: number
-  transaction_costs: number
-  spot_path: number[]
-  delta_path: number[]
-}
-
-type SurfaceResult = {
-  source?: string
-  interpolated_vol: number
-  quote_count: number
-  failed_quote_count?: number
-  smile: Array<{ strike: number; implied_vol: number }>
-  term_structure: Array<{ expiry: number; implied_vol: number }>
-  suspicious_quotes: unknown[]
-  arbitrage_warnings: string[]
-}
-
-type MarketSnapshot = {
-  ticker: string
-  price: number
-  previous_close: number | null
-  change: number | null
-  change_percent: number | null
-  currency: string
-  source: string
-  timestamp: string
-  option_expirations: string[]
-}
-
-type LiveOptionQuote = {
-  ticker: string
-  kind: OptionKind
-  requested_strike: number
-  matched_strike: number
-  expiration: string
-  last_price: number | null
-  bid: number | null
-  ask: number | null
-  mid: number | null
-  implied_volatility: number | null
-  volume: number | null
-  open_interest: number | null
-  source: string
-}
 
 type OptionChainResponse = {
   source: string
@@ -153,24 +86,6 @@ function optionMarketPayload(form: FormState, volatility = form.volatility) {
   }
 }
 
-function format(value: number, digits = 4) {
-  if (!Number.isFinite(value)) return '-'
-  const roundedZero = Math.abs(value) < 0.5 * 10 ** -digits ? 0 : value
-  return roundedZero.toFixed(digits)
-}
-
-function percent(value: number, digits = 2) {
-  return `${format(value * 100, digits)}%`
-}
-
-function optionalPercent(value: number | null | undefined, digits = 2) {
-  return typeof value === 'number' && Number.isFinite(value) ? percent(value, digits) : '-'
-}
-
-function optionalMoney(value: number | null | undefined, digits = 2) {
-  return typeof value === 'number' && Number.isFinite(value) ? `$${format(value, digits)}` : '-'
-}
-
 function resolvePricingVol(
   source: VolMarkSource,
   values: { manual: number; market: number; chain?: number | null; surface: number },
@@ -195,16 +110,6 @@ function stressTone(pnl: number, maxAbsPnl: number) {
   if (pnl > 0) return `rgba(68, 139, 84, ${0.18 + strength * 0.42})`
   if (pnl < 0) return `rgba(160, 73, 73, ${0.18 + strength * 0.42})`
   return '#20242a'
-}
-
-function modelRows(prices: ModelPrices): Array<[string, number]> {
-  return [
-    ['Black-Scholes', prices.black_scholes],
-    ['Binomial', prices.binomial],
-    ['Monte Carlo', prices.monte_carlo],
-    ['Local vol', prices.local_vol],
-    ['Stochastic vol', prices.stochastic_vol],
-  ]
 }
 
 function moneynessStatus(form: FormState) {
@@ -269,6 +174,9 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [marketLoading, setMarketLoading] = useState(false)
   const [chainLoading, setChainLoading] = useState(false)
+  const [liveRefreshEnabled, setLiveRefreshEnabled] = useState(false)
+  const [lastLiveRefresh, setLastLiveRefresh] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<TabId>('risk')
 
   const runAnalytics = useCallback(async () => {
     setLoading(true)
@@ -449,6 +357,14 @@ export default function App() {
     }
   }, [form.expiry, form.kind, form.strike, loadOptionChain, ticker])
 
+  useEffect(() => {
+    if (!liveRefreshEnabled) return undefined
+    const intervalId = window.setInterval(() => {
+      void loadMarketSnapshot().then(() => setLastLiveRefresh(new Date().toLocaleTimeString()))
+    }, 120_000)
+    return () => window.clearInterval(intervalId)
+  }, [liveRefreshEnabled, loadMarketSnapshot])
+
   const intrinsic =
     form.kind === 'call' ? Math.max(form.spot - form.strike, 0) : Math.max(form.strike - form.spot, 0)
   const timeValue = price - intrinsic
@@ -471,7 +387,9 @@ export default function App() {
       ? liveOptionQuote.ask - liveOptionQuote.bid
       : Number.NaN
   const volSpread = Number.isFinite(manualIv) ? manualIv - pricingVol : Number.NaN
-
+  const selectedContractLabel = liveOptionQuote
+    ? `${ticker.trim().toUpperCase()} ${liveOptionQuote.expiration} ${liveOptionQuote.kind.toUpperCase()} ${format(liveOptionQuote.matched_strike, 0)}`
+    : `${ticker.trim().toUpperCase()} ${form.kind.toUpperCase()} K ${format(form.strike, 2)}`
   function updateTicker(value: string) {
     setTicker(value.toUpperCase())
     setMarketSnapshot(null)
@@ -538,6 +456,14 @@ export default function App() {
     setMarketStatus('Sample trade loaded')
   }
 
+  function toggleLiveRefresh() {
+    const nextValue = !liveRefreshEnabled
+    setLiveRefreshEnabled(nextValue)
+    if (nextValue) {
+      void loadMarketSnapshot().then(() => setLastLiveRefresh(new Date().toLocaleTimeString()))
+    }
+  }
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -545,13 +471,33 @@ export default function App() {
           <h1>Options Risk Engine</h1>
           <p className="subtitle">Pricing, Greeks, implied volatility, stress testing, and hedging simulation.</p>
         </div>
-        <button className="run-button" onClick={runAnalytics} disabled={loading} title="Run analytics">
-          {loading ? <RefreshCw className="spin" size={18} /> : <Play size={18} />}
-          Run
-        </button>
+        <div className="top-actions">
+          <button
+            className={liveRefreshEnabled ? 'run-button live-active' : 'run-button'}
+            onClick={toggleLiveRefresh}
+            disabled={marketLoading}
+            title="Refresh live market data every two minutes"
+          >
+            {marketLoading ? <RefreshCw className="spin" size={18} /> : <RefreshCw size={18} />}
+            {liveRefreshEnabled ? 'Auto live' : 'Manual'}
+          </button>
+          <button className="run-button" onClick={runAnalytics} disabled={loading} title="Run analytics from current inputs">
+            {loading ? <RefreshCw className="spin" size={18} /> : <Play size={18} />}
+            Run
+          </button>
+        </div>
       </header>
 
-      <section className="grid">
+      <section className="ticker-strip">
+        <div><span>Selected contract</span><strong>{selectedContractLabel}</strong></div>
+        <div><span>Spot</span><strong>{optionalMoney(form.spot)}</strong></div>
+        <div><span>Market mid</span><strong>{optionalMoney(marketPrice)}</strong></div>
+        <div><span>Theoretical</span><strong>{optionalMoney(price)}</strong></div>
+        <div><span>Theo - market</span><strong className={theoreticalEdge >= 0 ? 'positive' : 'negative'}>{format(theoreticalEdge, 2)} / {optionalPercent(edgePct)}</strong></div>
+        <div><span>Live refresh</span><strong>{liveRefreshEnabled ? `On${lastLiveRefresh ? `, ${lastLiveRefresh}` : ''}` : 'Off'}</strong></div>
+      </section>
+
+      <section className="desk-grid">
         <div className="panel controls trade-ticket">
           <div className="panel-title">Trade setup</div>
           <div className="ticker-control">
@@ -584,7 +530,7 @@ export default function App() {
           <div className="note">Risk uses the selected pricing vol mark: {percent(pricingVol)}. The surface source only drives valuation when this is set to Surface IV.</div>
         </div>
 
-        <div className="panel span-2 valuation-panel">
+        <div className="panel valuation-panel">
           <div className="panel-title">Option valuation</div>
           <div className="valuation-layout">
             <div>
@@ -627,7 +573,9 @@ export default function App() {
             <div><span>Status</span><strong>{marketStatus}</strong></div>
           </div>
         </div>
+      </section>
 
+      <section className="workflow-section">
         <div className="panel full-width chain-panel">
           <div className="panel-header">
             <div className="panel-title">Option chain</div>
