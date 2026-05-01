@@ -1,6 +1,6 @@
 import { Play, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { BarChart, MetricTable, MiniLine, OptionChainTable, PayoffChart, type OptionChainLadderRow } from './components'
+import { BarChart, HedgeChart, MetricTable, MiniLine, OptionChainTable, PayoffChart, type OptionChainLadderRow } from './components'
 import { presetStrike, yearsUntilExpiration } from './marketUtils'
 
 type OptionKind = 'call' | 'put'
@@ -183,20 +183,6 @@ function resolvePricingVol(
   }
   const selected = candidates[source]
   return typeof selected === 'number' && Number.isFinite(selected) && selected >= 0 ? selected : values.manual
-}
-
-function sparkline(values: number[]) {
-  if (values.length < 2) return ''
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const span = max - min || 1
-  return values
-    .map((value, index) => {
-      const x = (index / (values.length - 1)) * 100
-      const y = 100 - ((value - min) / span) * 100
-      return `${x},${y}`
-    })
-    .join(' ')
 }
 
 function minMax(values: number[]) {
@@ -779,9 +765,7 @@ export default function App() {
 
         <div className="panel wide">
           <div className="panel-title">Delta Hedging</div>
-          <svg viewBox="0 0 100 100" className="chart" role="img" aria-label="Hedging spot path">
-            <polyline points={sparkline(hedge.spot_path)} />
-          </svg>
+          <HedgeChart values={hedge.spot_path} />
           <div className="summary-grid compact">
             <div><span>Hedging error</span><strong>{format(hedge.hedging_error, 4)}</strong></div>
             <div><span>Transaction costs</span><strong>{format(hedge.transaction_costs, 4)}</strong></div>

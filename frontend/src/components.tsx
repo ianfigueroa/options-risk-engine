@@ -34,18 +34,34 @@ function format(value: number, digits = 4) {
   return roundedZero.toFixed(digits)
 }
 
-function sparkline(values: number[]) {
-  if (values.length < 2) return ''
+function chartBounds(values: number[]) {
+  if (values.length === 0) return { min: 0, max: 1, span: 1 }
   const min = Math.min(...values)
   const max = Math.max(...values)
   const span = max - min || 1
+  return { min, max, span }
+}
+
+function linePoints(values: number[], height = 64) {
+  if (values.length < 2) return ''
+  const { min, span } = chartBounds(values)
+  const xPadding = 7
+  const yTop = 10
+  const yBottom = 12
+  const drawableWidth = 100 - xPadding * 2
+  const drawableHeight = height - yTop - yBottom
   return values
     .map((value, index) => {
-      const x = (index / (values.length - 1)) * 100
-      const y = 100 - ((value - min) / span) * 100
-      return `${x},${y}`
+      const x = xPadding + (index / (values.length - 1)) * drawableWidth
+      const y = yTop + (1 - (value - min) / span) * drawableHeight
+      return `${format(x, 2)},${format(y, 2)}`
     })
     .join(' ')
+}
+
+function chartLabel(value: number) {
+  if (!Number.isFinite(value)) return '-'
+  return Math.abs(value) <= 3 ? `${format(value * 100, 2)}%` : format(value, 2)
 }
 
 export function MetricTable({ rows }: { rows: Array<[string, string]> }) {
@@ -95,13 +111,61 @@ export function MiniLine({
   values: number[]
   labels: string[]
 }) {
+  const { min, max } = chartBounds(values)
+  const last = values[values.length - 1]
+  const points = linePoints(values)
+  if (values.length < 2) {
+    return (
+      <div className="mini-chart">
+        <div className="mini-chart-head"><span>{title}</span><strong>-</strong></div>
+        <div className="empty-state compact-empty">No surface data</div>
+      </div>
+    )
+  }
+
   return (
     <div className="mini-chart">
-      <div className="mini-title">{title}</div>
-      <svg viewBox="0 0 100 50" role="img" aria-label={`${title} chart`}>
-        <polyline points={sparkline(values)} />
+      <div className="mini-chart-head">
+        <span>{title}</span>
+        <strong>{chartLabel(last)}</strong>
+      </div>
+      <svg viewBox="0 0 100 64" role="img" aria-label={`${title} chart`}>
+        <line x1="7" x2="93" y1="10" y2="10" className="chart-grid-line" />
+        <line x1="7" x2="93" y1="31" y2="31" className="chart-grid-line" />
+        <line x1="7" x2="93" y1="52" y2="52" className="chart-grid-line" />
+        <text x="2" y="12" className="chart-axis-label">{chartLabel(max)}</text>
+        <text x="2" y="55" className="chart-axis-label">{chartLabel(min)}</text>
+        <polyline points={points} className="surface-line" />
       </svg>
       <div className="axis-row"><span>{xLabel}</span><span>{labels[0] ?? '-'}</span><span>{labels[labels.length - 1] ?? '-'}</span></div>
+    </div>
+  )
+}
+
+export function HedgeChart({ values }: { values: number[] }) {
+  const { min, max } = chartBounds(values)
+  const first = values[0]
+  const last = values[values.length - 1]
+  const points = linePoints(values, 76)
+  if (values.length < 2) {
+    return <div className="empty-state compact-empty">No hedging path</div>
+  }
+
+  return (
+    <div className="hedge-chart-wrap">
+      <svg viewBox="0 0 100 76" className="hedge-chart" role="img" aria-label="Delta hedging spot path">
+        <line x1="7" x2="93" y1="10" y2="10" className="chart-grid-line" />
+        <line x1="7" x2="93" y1="37" y2="37" className="chart-grid-line" />
+        <line x1="7" x2="93" y1="64" y2="64" className="chart-grid-line" />
+        <text x="2" y="12" className="chart-axis-label">${format(max, 2)}</text>
+        <text x="2" y="67" className="chart-axis-label">${format(min, 2)}</text>
+        <polyline points={points} className="hedge-line" />
+      </svg>
+      <div className="axis-row">
+        <span>GBM path</span>
+        <span>Start ${format(first, 2)}</span>
+        <span>End ${format(last, 2)}</span>
+      </div>
     </div>
   )
 }
