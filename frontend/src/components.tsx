@@ -197,14 +197,14 @@ export function OptionChainTable({
           <tr>
             <th>Bid</th>
             <th>Ask</th>
-            <th>Mid</th>
+            <th className="mid-header">Mid</th>
             <th>IV</th>
             <th>Vol</th>
             <th>OI</th>
             <th className="strike-header">K</th>
             <th>Bid</th>
             <th>Ask</th>
-            <th>Mid</th>
+            <th className="mid-header">Mid</th>
             <th>IV</th>
             <th>Vol</th>
             <th>OI</th>
@@ -241,7 +241,7 @@ function OptionSideCells({
     <>
       <td className={active ? 'selected-contract' : undefined}>{formatNullable(side?.bid ?? null, 2)}</td>
       <td className={active ? 'selected-contract' : undefined}>{formatNullable(side?.ask ?? null, 2)}</td>
-      <td className={active ? 'selected-contract' : undefined}>
+      <td className={active ? 'mid-cell selected-contract' : 'mid-cell'}>
         {side ? <button type="button" className="quote-button" onClick={onSelect} title="Select contract">{formatNullable(side.mid, 2)}</button> : '-'}
       </td>
       <td className={active ? 'selected-contract' : undefined}>{percentNullable(side?.implied_volatility ?? null)}</td>

@@ -282,7 +282,7 @@ select:focus {
 }
 .valuation-layout {
   display: grid;
-  grid-template-columns: minmax(290px, 0.95fr) minmax(380px, 1.15fr);
+  grid-template-columns: minmax(270px, 0.85fr) minmax(430px, 1.25fr);
   gap: 12px;
   align-items: start;
 }
@@ -492,6 +492,10 @@ th:last-child {
   text-align: right;
   font-size: 0.78rem;
 }
+.chain-table .mid-header,
+.chain-table .mid-cell {
+  text-align: center;
+}
 .chain-table th {
   position: sticky;
   top: 0;
@@ -519,6 +523,7 @@ th:last-child {
   font-weight: 700;
 }
 .quote-button {
+  width: 100%;
   min-width: 58px;
   padding: 3px 6px;
   border: 1px solid transparent;
@@ -528,6 +533,7 @@ th:last-child {
   cursor: pointer;
   font: inherit;
   font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 .quote-button:hover {
   border-color: #59616d;
