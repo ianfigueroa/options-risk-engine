@@ -104,6 +104,9 @@ h1 {
 .span-3 {
   grid-column: span 3;
 }
+.full-width {
+  grid-column: 1 / -1;
+}
 .panel-title {
   min-height: 22px;
   margin-bottom: 12px;
@@ -475,22 +478,73 @@ th:last-child {
   font-size: 0.78rem;
 }
 .chain-table-wrap {
-  max-height: 292px;
+  max-height: 330px;
   overflow: auto;
   border: 1px solid #2b3036;
+}
+.chain-panel {
+  padding-bottom: 12px;
+}
+.chain-table {
+  min-width: 980px;
+}
+.chain-table th,
+.chain-table td {
+  text-align: right;
+  font-size: 0.78rem;
 }
 .chain-table th {
   position: sticky;
   top: 0;
   z-index: 1;
 }
+.chain-group-row th {
+  top: 0;
+  color: #b6c8dd;
+  text-align: center;
+  background: #15191e;
+}
+.chain-table thead tr:nth-child(2) th {
+  top: 31px;
+}
 .chain-table td,
 .chain-table th {
   white-space: nowrap;
 }
+.strike-header,
+.strike-cell {
+  min-width: 78px;
+  color: #f2f4f6;
+  text-align: center !important;
+  background: #090b0d !important;
+  font-weight: 700;
+}
+.quote-button {
+  min-width: 58px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #dff0ff;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.quote-button:hover {
+  border-color: #59616d;
+  background: #20242a;
+}
+.selected-contract {
+  color: #ffffff !important;
+  background: #24303a !important;
+}
 .active-row td {
   background: #20262d;
   color: #f2f4f6;
+}
+.active-row td.selected-contract {
+  color: #ffffff !important;
+  background: #293848 !important;
 }
 .empty-state {
   padding: 18px;
@@ -661,7 +715,8 @@ th:last-child {
   }
   .wide,
   .span-2,
-  .span-3 {
+  .span-3,
+  .full-width {
     grid-column: span 1;
   }
   .payoff-chart {

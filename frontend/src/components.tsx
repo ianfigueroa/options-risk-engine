@@ -21,6 +21,12 @@ export type OptionChainRow = {
   volume: number | null
   open_interest: number | null
 }
+export type OptionChainSide = Omit<OptionChainRow, 'expiration' | 'expiry_years' | 'strike'>
+export type OptionChainLadderRow = {
+  strike: number
+  call: OptionChainSide | null
+  put: OptionChainSide | null
+}
 
 function format(value: number, digits = 4) {
   if (!Number.isFinite(value)) return '-'
@@ -103,11 +109,13 @@ export function MiniLine({
 export function OptionChainTable({
   rows,
   selectedStrike,
+  selectedKind,
   onSelect,
 }: {
-  rows: OptionChainRow[]
+  rows: OptionChainLadderRow[]
   selectedStrike: number
-  onSelect: (row: OptionChainRow) => void
+  selectedKind: OptionKind
+  onSelect: (row: OptionChainLadderRow, kind: OptionKind) => void
 }) {
   if (rows.length === 0) {
     return <div className="empty-state">No chain loaded</div>
@@ -117,37 +125,65 @@ export function OptionChainTable({
     <div className="chain-table-wrap">
       <table className="data-table chain-table">
         <thead>
+          <tr className="chain-group-row">
+            <th colSpan={6}>Calls</th>
+            <th className="strike-header">Strike</th>
+            <th colSpan={6}>Puts</th>
+          </tr>
           <tr>
-            <th>Strike</th>
             <th>Bid</th>
             <th>Ask</th>
             <th>Mid</th>
             <th>IV</th>
             <th>Vol</th>
             <th>OI</th>
-            <th />
+            <th className="strike-header">K</th>
+            <th>Bid</th>
+            <th>Ask</th>
+            <th>Mid</th>
+            <th>IV</th>
+            <th>Vol</th>
+            <th>OI</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => {
-            const key = `${row.expiration}-${row.strike}`
+            const key = `ladder-${row.strike}`
             const active = Math.abs(row.strike - selectedStrike) < 0.001
             return (
               <tr key={key} className={active ? 'active-row' : undefined}>
-                <td>{format(row.strike, 2)}</td>
-                <td>{formatNullable(row.bid, 2)}</td>
-                <td>{formatNullable(row.ask, 2)}</td>
-                <td>{formatNullable(row.mid, 2)}</td>
-                <td>{percentNullable(row.implied_volatility)}</td>
-                <td>{row.volume ?? '-'}</td>
-                <td>{row.open_interest ?? '-'}</td>
-                <td><button type="button" className="table-button" onClick={() => onSelect(row)}>Select</button></td>
+                <OptionSideCells side={row.call} active={active && selectedKind === 'call'} onSelect={() => onSelect(row, 'call')} />
+                <td className="strike-cell">{format(row.strike, 2)}</td>
+                <OptionSideCells side={row.put} active={active && selectedKind === 'put'} onSelect={() => onSelect(row, 'put')} />
               </tr>
             )
           })}
         </tbody>
       </table>
     </div>
+  )
+}
+
+function OptionSideCells({
+  side,
+  active,
+  onSelect,
+}: {
+  side: OptionChainSide | null
+  active: boolean
+  onSelect: () => void
+}) {
+  return (
+    <>
+      <td className={active ? 'selected-contract' : undefined}>{formatNullable(side?.bid ?? null, 2)}</td>
+      <td className={active ? 'selected-contract' : undefined}>{formatNullable(side?.ask ?? null, 2)}</td>
+      <td className={active ? 'selected-contract' : undefined}>
+        {side ? <button type="button" className="quote-button" onClick={onSelect} title="Select contract">{formatNullable(side.mid, 2)}</button> : '-'}
+      </td>
+      <td className={active ? 'selected-contract' : undefined}>{percentNullable(side?.implied_volatility ?? null)}</td>
+      <td className={active ? 'selected-contract' : undefined}>{side?.volume ?? '-'}</td>
+      <td className={active ? 'selected-contract' : undefined}>{side?.open_interest ?? '-'}</td>
+    </>
   )
 }
 

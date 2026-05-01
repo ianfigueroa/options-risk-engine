@@ -308,3 +308,35 @@ def test_option_chain_endpoint_returns_clickable_rows(monkeypatch):
     assert body["quote_count"] == 2
     assert body["rows"][0]["strike"] == 390.0
     assert body["rows"][1]["mid"] == 22.4
+
+
+def test_option_chain_ladder_endpoint_returns_calls_and_puts(monkeypatch):
+    def fake_ladder(ticker: str, spot: float, query_expiry: float, strike_window: float):
+        assert (ticker, spot, query_expiry, strike_window) == ("MSFT", 400.0, 0.5, 0.20)
+        return {
+            "expiration": "2026-11-20",
+            "expiry_years": 0.55,
+            "rows": [
+                {
+                    "strike": 390.0,
+                    "call": {"bid": 25.0, "ask": 25.5, "mid": 25.25, "last_price": 25.2, "implied_volatility": 0.31, "volume": 40, "open_interest": 900},
+                    "put": {"bid": 14.0, "ask": 14.4, "mid": 14.2, "last_price": 14.1, "implied_volatility": 0.29, "volume": 25, "open_interest": 700},
+                },
+                {
+                    "strike": 400.0,
+                    "call": {"bid": 20.0, "ask": 20.5, "mid": 20.25, "last_price": 20.3, "implied_volatility": 0.30, "volume": 75, "open_interest": 1100},
+                    "put": {"bid": 18.0, "ask": 18.4, "mid": 18.2, "last_price": 18.1, "implied_volatility": 0.30, "volume": 80, "open_interest": 1800},
+                },
+            ],
+        }
+
+    monkeypatch.setattr(main, "fetch_option_chain_ladder", fake_ladder)
+
+    response = client.get("/option-chain-ladder/MSFT?spot=400&expiry_years=0.5&strike_window=0.2")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "Yahoo Finance option chain"
+    assert body["quote_count"] == 2
+    assert body["rows"][0]["call"]["mid"] == 25.25
+    assert body["rows"][1]["put"]["open_interest"] == 1800

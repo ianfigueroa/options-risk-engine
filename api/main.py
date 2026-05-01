@@ -8,7 +8,12 @@ from typing import Any, Literal, TypeVar
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.market_data import fetch_market_snapshot, fetch_nearest_option_quote, fetch_option_chain_quotes
+from api.market_data import (
+    fetch_market_snapshot,
+    fetch_nearest_option_quote,
+    fetch_option_chain_ladder,
+    fetch_option_chain_quotes,
+)
 from api.schemas import (
     HedgingConfigSchema,
     HedgingRequest,
@@ -129,6 +134,25 @@ def option_chain(
         "kind": kind,
         "quote_count": len(rows),
         "rows": sorted(rows, key=lambda row: float(row["strike"])),
+    }
+
+
+@app.get("/option-chain-ladder/{ticker}")
+def option_chain_ladder(
+    ticker: TickerSymbol,
+    spot: float = Query(..., gt=0.0),
+    expiry_years: float = Query(..., gt=0.0),
+    strike_window: float = Query(0.20, gt=0.0, le=2.0),
+) -> dict[str, Any]:
+    ladder = _safe(lambda: fetch_option_chain_ladder(ticker.upper(), spot, expiry_years, strike_window))
+    rows = ladder["rows"]
+    return {
+        "source": "Yahoo Finance option chain",
+        "ticker": ticker.upper(),
+        "expiration": ladder["expiration"],
+        "expiry_years": ladder["expiry_years"],
+        "quote_count": len(rows),
+        "rows": rows,
     }
 
 

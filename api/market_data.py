@@ -97,6 +97,21 @@ def fetch_option_chain_quotes(
     )
 
 
+def fetch_option_chain_ladder(
+    ticker: str,
+    spot: float,
+    query_expiry: float,
+    strike_window: float,
+) -> dict[str, Any]:
+    """Fetch calls and puts for the nearest expiry as a two-sided ladder."""
+    symbol = ticker.upper()
+    return _live_cache.get_or_load(
+        ("option_ladder", symbol, round(spot, 2), round(query_expiry, 6), round(strike_window, 4)),
+        OPTION_CHAIN_TTL_SECONDS,
+        lambda: _fetch_option_chain_ladder_uncached(symbol, spot, query_expiry, strike_window),
+    )
+
+
 def _fetch_market_snapshot_uncached(symbol: str) -> dict[str, Any]:
     try:
         import yfinance as yf
@@ -242,6 +257,50 @@ def _fetch_option_chain_quotes_uncached(
     return rows
 
 
+def _fetch_option_chain_ladder_uncached(
+    symbol: str,
+    spot: float,
+    query_expiry: float,
+    strike_window: float,
+) -> dict[str, Any]:
+    try:
+        import yfinance as yf
+    except ImportError as exc:
+        raise ValueError("Live option chains require installing the yfinance dependency.") from exc
+
+    _wait_for_yahoo_slot()
+    instrument = yf.Ticker(symbol)
+    _wait_for_yahoo_slot()
+    available_expirations = list(getattr(instrument, "options", []) or [])
+    if not available_expirations:
+        raise ValueError(f"No option expirations were available for ticker {symbol}.")
+
+    target_date = date.today() + timedelta(days=max(1, round(query_expiry * 365.0)))
+    expiration = min(available_expirations, key=lambda value: abs(date.fromisoformat(value) - target_date))
+    expiry_years = max(1.0 / 365.0, (date.fromisoformat(expiration) - date.today()).days / 365.0)
+    lower_strike = spot * max(0.0, 1.0 - strike_window)
+    upper_strike = spot * (1.0 + strike_window)
+
+    _wait_for_yahoo_slot()
+    chain = instrument.option_chain(expiration)
+    calls = _window_quotes(chain.calls, spot, lower_strike, upper_strike)
+    puts = _window_quotes(chain.puts, spot, lower_strike, upper_strike)
+    call_map = {float(row["strike"]): _option_chain_side(row) for _, row in calls.iterrows()}
+    put_map = {float(row["strike"]): _option_chain_side(row) for _, row in puts.iterrows()}
+    strikes = sorted(set(call_map) | set(put_map))
+    if not strikes:
+        raise ValueError(f"No usable option quotes were available for ticker {symbol}.")
+
+    return {
+        "expiration": expiration,
+        "expiry_years": expiry_years,
+        "rows": [
+            {"strike": strike, "call": call_map.get(strike), "put": put_map.get(strike)}
+            for strike in strikes
+        ],
+    }
+
+
 def _wait_for_yahoo_slot() -> None:
     global _last_yahoo_request
     if YAHOO_MIN_REQUEST_INTERVAL_SECONDS <= 0.0:
@@ -289,14 +348,21 @@ def _optional_int(value: Any) -> int | None:
 
 
 def _option_chain_row(expiration: str, expiry_years: float, row: Any) -> dict[str, Any]:
+    side = _option_chain_side(row)
+    return {
+        "expiration": expiration,
+        "expiry_years": expiry_years,
+        "strike": float(row["strike"]),
+        **side,
+    }
+
+
+def _option_chain_side(row: Any) -> dict[str, Any]:
     bid = _optional_float(row.get("bid"))
     ask = _optional_float(row.get("ask"))
     last_price = _optional_float(row.get("lastPrice"))
     mid = (bid + ask) / 2.0 if bid is not None and ask is not None and bid > 0.0 and ask > 0.0 else last_price
     return {
-        "expiration": expiration,
-        "expiry_years": expiry_years,
-        "strike": float(row["strike"]),
         "bid": bid,
         "ask": ask,
         "last_price": last_price,
@@ -305,3 +371,12 @@ def _option_chain_row(expiration: str, expiry_years: float, row: Any) -> dict[st
         "volume": _optional_int(row.get("volume")),
         "open_interest": _optional_int(row.get("openInterest")),
     }
+
+
+def _window_quotes(quotes: Any, spot: float, lower_strike: float, upper_strike: float) -> Any:
+    if quotes.empty:
+        return quotes
+    window = quotes[(quotes["strike"] >= lower_strike) & (quotes["strike"] <= upper_strike)]
+    if not window.empty:
+        return window
+    return quotes.loc[[(quotes["strike"] - spot).abs().idxmin()]]
