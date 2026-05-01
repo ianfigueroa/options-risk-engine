@@ -1,0 +1,12 @@
+.git
+.pytest_cache
+__pycache__
+build
+dist
+*.pyc
+*.pyo
+*.pyd
+*.log
+frontend/node_modules
+frontend/dist
+python/options_lab/bindings/_options_core*.pyd

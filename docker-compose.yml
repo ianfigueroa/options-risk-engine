@@ -1,0 +1,23 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    environment:
+      OPTIONS_YAHOO_MIN_INTERVAL_SECONDS: "2.5"
+      OPTIONS_MARKET_SNAPSHOT_TTL_SECONDS: "60"
+      OPTIONS_OPTION_QUOTE_TTL_SECONDS: "120"
+      OPTIONS_OPTION_CHAIN_TTL_SECONDS: "300"
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    environment:
+      VITE_API_BASE_URL: "http://127.0.0.1:8000"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
