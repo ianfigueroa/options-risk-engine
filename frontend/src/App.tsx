@@ -1,6 +1,7 @@
 import { Play, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { BarChart, MetricTable, MiniLine, PayoffChart } from './components'
+import { BarChart, MetricTable, MiniLine, OptionChainTable, PayoffChart, type OptionChainRow } from './components'
+import { presetStrike, yearsUntilExpiration } from './marketUtils'
 
 type OptionKind = 'call' | 'put'
 type SurfaceSource = 'synthetic' | 'live'
@@ -84,6 +85,14 @@ type LiveOptionQuote = {
   volume: number | null
   open_interest: number | null
   source: string
+}
+
+type OptionChainResponse = {
+  source: string
+  ticker: string
+  kind: OptionKind
+  quote_count: number
+  rows: OptionChainRow[]
 }
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
@@ -231,37 +240,6 @@ function surfaceExpiries(expiry: number) {
     .sort((left, right) => left - right)
 }
 
-function strikeStep(spot: number) {
-  if (spot >= 250) return 5
-  if (spot >= 100) return 2.5
-  if (spot >= 25) return 1
-  return 0.5
-}
-
-function roundedStrike(rawStrike: number, spot: number) {
-  const step = strikeStep(spot)
-  return Math.max(step, Number((Math.round(rawStrike / step) * step).toFixed(4)))
-}
-
-function presetStrike(kind: OptionKind, spot: number, preset: 'atm' | 'otm5' | 'otm10' | 'itm5' | 'itm10') {
-  const direction = kind === 'call' ? 1 : -1
-  const multipliers = {
-    atm: 1,
-    otm5: 1 + direction * 0.05,
-    otm10: 1 + direction * 0.10,
-    itm5: 1 - direction * 0.05,
-    itm10: 1 - direction * 0.10,
-  }
-  return roundedStrike(spot * multipliers[preset], spot)
-}
-
-function yearsUntilExpiration(expiration: string) {
-  const expiryDate = new Date(`${expiration}T00:00:00`)
-  if (Number.isNaN(expiryDate.getTime())) return null
-  const days = (expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-  return Math.max(1 / 365, days / 365)
-}
-
 export default function App() {
   const [ticker, setTicker] = useState('AAPL')
   const [form, setForm] = useState<FormState>({
@@ -294,11 +272,14 @@ export default function App() {
   const [pricingVol, setPricingVol] = useState(form.volatility)
   const [marketSnapshot, setMarketSnapshot] = useState<MarketSnapshot | null>(null)
   const [liveOptionQuote, setLiveOptionQuote] = useState<LiveOptionQuote | null>(null)
+  const [optionChainRows, setOptionChainRows] = useState<OptionChainRow[]>([])
   const [status, setStatus] = useState('API idle')
   const [surfaceStatus, setSurfaceStatus] = useState('Surface idle')
   const [marketStatus, setMarketStatus] = useState('Market data idle')
+  const [optionChainStatus, setOptionChainStatus] = useState('Chain idle')
   const [loading, setLoading] = useState(false)
   const [marketLoading, setMarketLoading] = useState(false)
+  const [chainLoading, setChainLoading] = useState(false)
 
   const runAnalytics = useCallback(async () => {
     setLoading(true)
@@ -395,6 +376,34 @@ export default function App() {
     void runAnalytics()
   }, [runAnalytics])
 
+  const loadOptionChain = useCallback(async (
+    symbol = ticker.trim().toUpperCase(),
+    spot = form.spot,
+    kind = form.kind,
+    expiry = form.expiry,
+  ) => {
+    if (!symbol) return
+    setChainLoading(true)
+    setOptionChainStatus('Loading chain')
+    try {
+      const query = new URLSearchParams({
+        kind,
+        spot: String(spot),
+        expiry_years: String(expiry),
+        strike_window: '0.20',
+      })
+      const chain = await getJson<OptionChainResponse>(`/option-chain/${encodeURIComponent(symbol)}?${query}`)
+      setOptionChainRows(chain.rows)
+      const expiration = chain.rows[0]?.expiration
+      setOptionChainStatus(expiration ? `${chain.quote_count} rows / ${expiration}` : 'No rows')
+    } catch (error) {
+      setOptionChainRows([])
+      setOptionChainStatus(error instanceof Error ? error.message : 'Chain unavailable')
+    } finally {
+      setChainLoading(false)
+    }
+  }, [form.expiry, form.kind, form.spot, ticker])
+
   useEffect(() => {
     if (!liveOptionQuote) return
     const quoteExpiry = yearsUntilExpiration(liveOptionQuote.expiration)
@@ -433,10 +442,12 @@ export default function App() {
           strike: Number(quote.matched_strike.toFixed(4)),
           expiry: liveExpiry === null ? current.expiry : Number(liveExpiry.toFixed(6)),
         }))
+        await loadOptionChain(symbol, liveSpot, form.kind, liveExpiry ?? form.expiry)
         setMarketStatus(`${snapshot.source} live`)
       } catch (error) {
         setLiveOptionQuote(null)
         setForm((current) => ({ ...current, spot: liveSpot }))
+        await loadOptionChain(symbol, liveSpot, form.kind, form.expiry)
         setMarketStatus(error instanceof Error ? `Stock live; ${error.message}` : 'Stock live; option quote unavailable')
       }
     } catch (error) {
@@ -445,7 +456,7 @@ export default function App() {
     } finally {
       setMarketLoading(false)
     }
-  }, [form.expiry, form.kind, form.strike, ticker])
+  }, [form.expiry, form.kind, form.strike, loadOptionChain, ticker])
 
   const intrinsic =
     form.kind === 'call' ? Math.max(form.spot - form.strike, 0) : Math.max(form.strike - form.spot, 0)
@@ -474,6 +485,8 @@ export default function App() {
     setTicker(value.toUpperCase())
     setMarketSnapshot(null)
     setLiveOptionQuote(null)
+    setOptionChainRows([])
+    setOptionChainStatus('Ticker changed; load chain')
     setMarketStatus('Ticker changed; load market')
   }
 
@@ -482,6 +495,32 @@ export default function App() {
       ...current,
       strike: presetStrike(current.kind, current.spot, preset),
     }))
+  }
+
+  function selectOptionChainRow(row: OptionChainRow) {
+    const livePrice = row.mid ?? row.last_price
+    setLiveOptionQuote({
+      ticker: ticker.trim().toUpperCase(),
+      kind: form.kind,
+      requested_strike: row.strike,
+      matched_strike: row.strike,
+      expiration: row.expiration,
+      last_price: row.last_price,
+      bid: row.bid,
+      ask: row.ask,
+      mid: row.mid,
+      implied_volatility: row.implied_volatility,
+      volume: row.volume,
+      open_interest: row.open_interest,
+      source: 'Yahoo Finance',
+    })
+    if (livePrice !== null) setMarketPrice(Number(livePrice.toFixed(4)))
+    setForm((current) => ({
+      ...current,
+      strike: Number(row.strike.toFixed(4)),
+      expiry: Number(row.expiry_years.toFixed(6)),
+    }))
+    setMarketStatus(`Selected ${row.expiration} ${form.kind.toUpperCase()} ${format(row.strike, 0)}`)
   }
 
   function loadSampleTrade() {
@@ -496,6 +535,8 @@ export default function App() {
     setMarketPrice(9.15)
     setMarketSnapshot(null)
     setLiveOptionQuote(null)
+    setOptionChainRows([])
+    setOptionChainStatus('Sample trade loaded')
     setMarketStatus('Sample trade loaded')
   }
 
@@ -587,6 +628,25 @@ export default function App() {
             <div><span>Options dates</span><strong>{marketSnapshot ? marketSnapshot.option_expirations.length : '-'}</strong></div>
             <div><span>Status</span><strong>{marketStatus}</strong></div>
           </div>
+        </div>
+
+        <div className="panel span-2">
+          <div className="panel-header">
+            <div className="panel-title">Option chain</div>
+            <button
+              className="small-button"
+              type="button"
+              onClick={() => loadOptionChain()}
+              disabled={chainLoading}
+            >
+              {chainLoading ? 'Loading' : 'Refresh chain'}
+            </button>
+          </div>
+          <div className="chain-meta">
+            <span>{optionChainStatus}</span>
+            <span>{form.kind.toUpperCase()} around K {format(form.strike, 2)}</span>
+          </div>
+          <OptionChainTable rows={optionChainRows} selectedStrike={form.strike} onSelect={selectOptionChainRow} />
         </div>
 
         <div className="panel span-2 vol-panel">

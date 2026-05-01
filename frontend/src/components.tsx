@@ -9,6 +9,18 @@ type PayoffPoint = {
   payoffY: number
   profitY: number
 }
+export type OptionChainRow = {
+  expiration: string
+  expiry_years: number
+  strike: number
+  bid: number | null
+  ask: number | null
+  last_price: number | null
+  mid: number | null
+  implied_volatility: number | null
+  volume: number | null
+  open_interest: number | null
+}
 
 function format(value: number, digits = 4) {
   if (!Number.isFinite(value)) return '-'
@@ -84,6 +96,57 @@ export function MiniLine({
         <polyline points={sparkline(values)} />
       </svg>
       <div className="axis-row"><span>{xLabel}</span><span>{labels[0] ?? '-'}</span><span>{labels[labels.length - 1] ?? '-'}</span></div>
+    </div>
+  )
+}
+
+export function OptionChainTable({
+  rows,
+  selectedStrike,
+  onSelect,
+}: {
+  rows: OptionChainRow[]
+  selectedStrike: number
+  onSelect: (row: OptionChainRow) => void
+}) {
+  if (rows.length === 0) {
+    return <div className="empty-state">No chain loaded</div>
+  }
+
+  return (
+    <div className="chain-table-wrap">
+      <table className="data-table chain-table">
+        <thead>
+          <tr>
+            <th>Strike</th>
+            <th>Bid</th>
+            <th>Ask</th>
+            <th>Mid</th>
+            <th>IV</th>
+            <th>Vol</th>
+            <th>OI</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const key = `${row.expiration}-${row.strike}`
+            const active = Math.abs(row.strike - selectedStrike) < 0.001
+            return (
+              <tr key={key} className={active ? 'active-row' : undefined}>
+                <td>{format(row.strike, 2)}</td>
+                <td>{formatNullable(row.bid, 2)}</td>
+                <td>{formatNullable(row.ask, 2)}</td>
+                <td>{formatNullable(row.mid, 2)}</td>
+                <td>{percentNullable(row.implied_volatility)}</td>
+                <td>{row.volume ?? '-'}</td>
+                <td>{row.open_interest ?? '-'}</td>
+                <td><button type="button" className="table-button" onClick={() => onSelect(row)}>Select</button></td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -185,4 +248,12 @@ export function PayoffChart({
       </div>
     </div>
   )
+}
+
+function formatNullable(value: number | null, digits = 2) {
+  return typeof value === 'number' && Number.isFinite(value) ? format(value, digits) : '-'
+}
+
+function percentNullable(value: number | null) {
+  return typeof value === 'number' && Number.isFinite(value) ? `${format(value * 100, 2)}%` : '-'
 }
