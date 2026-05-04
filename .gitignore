@@ -6,11 +6,17 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .coverage
+coverage/
+coverage.xml
 htmlcov/
+junit.xml
+test-results/
+playwright-report/
 node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/coverage/
+frontend/test-results/
 .env
 .env.*
 !.env.example
