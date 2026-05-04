@@ -599,130 +599,43 @@ export default function App() {
             onSelect={selectOptionChainRow}
           />
         </div>
-
-        <div className="panel span-2 vol-panel">
-          <div className="panel-title">Volatility mark and surface</div>
-          <div className="source-controls">
-            <label>Surface source<select value={surfaceSource} onChange={(event) => setSurfaceSource(event.target.value as SurfaceSource)}><option value="synthetic">Synthetic grid</option><option value="live">Live option chain</option></select></label>
-            <label>Pricing source<select value={volMarkSource} onChange={(event) => setVolMarkSource(event.target.value as VolMarkSource)}>
-              <option value="manual">Manual input</option>
-              <option value="market">Market IV from price</option>
-              <option value="chain">Yahoo chain IV</option>
-              <option value="surface">Surface IV</option>
-            </select></label>
-          </div>
-          <div className="metric-row"><span>Interpolated IV</span><strong>{percent(surfaceVol)}</strong></div>
-          <div className="metric-row"><span>Pricing IV used</span><strong>{percent(pricingVol)}</strong></div>
-          <div className="metric-row"><span>Market - pricing vol</span><strong>{optionalPercent(volSpread)}</strong></div>
-          <div className="metric-row"><span>Chain IV</span><strong>{optionalPercent(chainIv)}</strong></div>
-          <div className="metric-row"><span>Query point</span><strong>K {format(form.strike, 2)} / T {format(form.expiry, 2)}</strong></div>
-          <div className="metric-row"><span>Quote grid</span><strong>{quoteCount} quotes</strong></div>
-          <div className="metric-row"><span>Failed live quotes</span><strong>{surfaceSource === 'live' ? failedQuoteCount : '-'}</strong></div>
-          <div className="metric-row"><span>Surface warnings</span><strong>{surfaceWarnings}</strong></div>
-          <div className="metric-row"><span>Status</span><strong>{surfaceStatus}</strong></div>
-        </div>
-
-        <div className="panel span-2">
-          <div className="panel-title">Model prices</div>
-          <BarChart rows={modelRows(modelPrices)} valuePrefix="$" />
-          <MetricTable rows={[
-            ['Black-Scholes', `$${format(modelPrices.black_scholes, 4)}`],
-            ['Binomial tree', `$${format(modelPrices.binomial, 4)}`],
-            ['Monte Carlo', `$${format(modelPrices.monte_carlo, 4)}`],
-            ['Local vol MC', `$${format(modelPrices.local_vol, 4)}`],
-            ['Stochastic vol MC', `$${format(modelPrices.stochastic_vol, 4)}`],
-          ]} />
-        </div>
-
-        <div className="panel">
-          <div className="panel-title">Option Greeks</div>
-          <BarChart rows={greekBars} digits={3} />
-          <MetricTable rows={Object.entries(greeks).map(([key, value]) => [key, format(value)])} />
-        </div>
-
-        <div className="panel">
-          <div className="panel-title">Portfolio</div>
-          <MetricTable rows={[
-            ['Long selected option', '10'],
-            ['Short 95% strike put', '-4'],
-            ['Underlying shares', '25'],
-            ['Cash', '-500'],
-            ['Value', `$${format(portfolioValue, 2)}`],
-          ]} />
-        </div>
-
-        <div className="panel">
-          <div className="panel-title">Portfolio Greeks</div>
-          <MetricTable rows={Object.entries(portfolioGreeks).map(([key, value]) => [key, format(value)])} />
-        </div>
-
-        <div className="panel wide">
-          <div className="panel-title">Stress heatmap and PnL</div>
-          <div className="stress-heatmap">
-            {stress.map((row) => (
-              <div
-                key={row.label}
-                className="stress-cell"
-                style={{ backgroundColor: stressTone(row.pnl, maxStressPnl) }}
-              >
-                <span>{row.label}</span>
-                <strong>{format(row.pnl, 2)}</strong>
-              </div>
-            ))}
-          </div>
-          <table className="data-table">
-            <thead><tr><th>Scenario</th><th>Portfolio PnL</th><th>Scenario value</th></tr></thead>
-            <tbody>
-              {stress.map((row) => (
-                <tr key={row.label}>
-                  <td>{row.label}</td>
-                  <td className={row.pnl >= 0 ? 'positive' : 'negative'}>{format(row.pnl, 2)}</td>
-                  <td>{row.scenario_value === undefined ? '-' : format(row.scenario_value, 2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="panel wide">
-          <div className="panel-title">Scenario Greeks matrix</div>
-          <table className="data-table">
-            <thead><tr><th>Scenario</th><th>Delta</th><th>Gamma</th><th>Vega</th><th>Theta</th><th>Rho</th></tr></thead>
-            <tbody>
-              {scenarioGreekRows.map((row) => (
-                <tr key={row.label}>
-                  <td>{row.label}</td>
-                  <td>{format(row.delta, 3)}</td>
-                  <td>{format(row.gamma, 4)}</td>
-                  <td>{format(row.vega, 3)}</td>
-                  <td>{format(row.theta, 3)}</td>
-                  <td>{format(row.rho, 3)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="panel wide">
-          <div className="panel-title">Vol smile and term structure</div>
-          <div className="chart-pair">
-            <MiniLine title="Smile" xLabel="Strike" values={smile.map((point) => point.implied_vol)} labels={smile.map((point) => format(point.strike, 0))} />
-            <MiniLine title="Term" xLabel="Expiry" values={termStructure.map((point) => point.implied_vol)} labels={termStructure.map((point) => format(point.expiry, 2))} />
-          </div>
-        </div>
-
-        <div className="panel wide">
-          <div className="panel-title">Delta Hedging</div>
-          <HedgeChart values={hedge.spot_path} />
-          <div className="summary-grid compact">
-            <div><span>Hedging error</span><strong>{format(hedge.hedging_error, 4)}</strong></div>
-            <div><span>Transaction costs</span><strong>{format(hedge.transaction_costs, 4)}</strong></div>
-            <div><span>Terminal spot</span><strong>{format(hedge.terminal_spot, 4)}</strong></div>
-            <div><span>Spot range</span><strong>{format(hedgeRange.min, 2)} - {format(hedgeRange.max, 2)}</strong></div>
-            <div><span>Rebalance samples</span><strong>{hedge.delta_path.length}</strong></div>
-          </div>
-        </div>
       </section>
+
+      <AnalyticsTabs
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        greeks={greeks}
+        greekBars={greekBars}
+        portfolioValue={portfolioValue}
+        portfolioGreeks={portfolioGreeks}
+        stress={stress}
+        maxStressPnl={maxStressPnl}
+        scenarioGreekRows={scenarioGreekRows}
+        surfaceSource={surfaceSource}
+        setSurfaceSource={setSurfaceSource}
+        volMarkSource={volMarkSource}
+        setVolMarkSource={setVolMarkSource}
+        surfaceVol={surfaceVol}
+        pricingVol={pricingVol}
+        volSpread={volSpread}
+        chainIv={chainIv}
+        formStrike={form.strike}
+        formExpiry={form.expiry}
+        quoteCount={quoteCount}
+        failedQuoteCount={failedQuoteCount}
+        surfaceWarnings={surfaceWarnings}
+        surfaceStatus={surfaceStatus}
+        smile={smile}
+        termStructure={termStructure}
+        hedge={hedge}
+        hedgeRange={hedgeRange}
+        modelPrices={modelPrices}
+        selectedContractLabel={selectedContractLabel}
+        formSpot={form.spot}
+        formRate={form.rate}
+        status={status}
+        stressTone={stressTone}
+      />
     </main>
   )
 }
