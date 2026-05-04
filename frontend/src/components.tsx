@@ -188,11 +188,26 @@ export function OptionChainTable({
   return (
     <div className="chain-table-wrap">
       <table className="data-table chain-table">
+        <colgroup>
+          <col className="chain-price-col call-col" />
+          <col className="chain-price-col call-col" />
+          <col className="chain-mid-col call-col" />
+          <col className="chain-iv-col call-col" />
+          <col className="chain-small-col call-col" />
+          <col className="chain-oi-col call-col" />
+          <col className="chain-strike-col" />
+          <col className="chain-price-col put-col" />
+          <col className="chain-price-col put-col" />
+          <col className="chain-mid-col put-col" />
+          <col className="chain-iv-col put-col" />
+          <col className="chain-small-col put-col" />
+          <col className="chain-oi-col put-col" />
+        </colgroup>
         <thead>
           <tr className="chain-group-row">
-            <th colSpan={6}>Calls</th>
+            <th className="call-group" colSpan={6}>Calls</th>
             <th className="strike-header">Strike</th>
-            <th colSpan={6}>Puts</th>
+            <th className="put-group" colSpan={6}>Puts</th>
           </tr>
           <tr>
             <th>Bid</th>
@@ -216,9 +231,9 @@ export function OptionChainTable({
             const active = Math.abs(row.strike - selectedStrike) < 0.001
             return (
               <tr key={key} className={active ? 'active-row' : undefined}>
-                <OptionSideCells side={row.call} active={active && selectedKind === 'call'} onSelect={() => onSelect(row, 'call')} />
+                <OptionSideCells side={row.call} sideName="call" active={active && selectedKind === 'call'} onSelect={() => onSelect(row, 'call')} />
                 <td className="strike-cell">{format(row.strike, 2)}</td>
-                <OptionSideCells side={row.put} active={active && selectedKind === 'put'} onSelect={() => onSelect(row, 'put')} />
+                <OptionSideCells side={row.put} sideName="put" active={active && selectedKind === 'put'} onSelect={() => onSelect(row, 'put')} />
               </tr>
             )
           })}
@@ -230,23 +245,26 @@ export function OptionChainTable({
 
 function OptionSideCells({
   side,
+  sideName,
   active,
   onSelect,
 }: {
   side: OptionChainSide | null
+  sideName: OptionKind
   active: boolean
   onSelect: () => void
 }) {
+  const selectedClass = active ? ' selected-contract' : ''
   return (
     <>
-      <td className={active ? 'selected-contract' : undefined}>{formatNullable(side?.bid ?? null, 2)}</td>
-      <td className={active ? 'selected-contract' : undefined}>{formatNullable(side?.ask ?? null, 2)}</td>
-      <td className={active ? 'mid-cell selected-contract' : 'mid-cell'}>
+      <td className={`${sideName}-cell bidask-cell${selectedClass}`}>{formatNullable(side?.bid ?? null, 2)}</td>
+      <td className={`${sideName}-cell bidask-cell${selectedClass}`}>{formatNullable(side?.ask ?? null, 2)}</td>
+      <td className={`${sideName}-cell mid-cell${selectedClass}`}>
         {side ? <button type="button" className="quote-button" onClick={onSelect} title="Select contract">{formatNullable(side.mid, 2)}</button> : '-'}
       </td>
-      <td className={active ? 'selected-contract' : undefined}>{percentNullable(side?.implied_volatility ?? null)}</td>
-      <td className={active ? 'selected-contract' : undefined}>{side?.volume ?? '-'}</td>
-      <td className={active ? 'selected-contract' : undefined}>{side?.open_interest ?? '-'}</td>
+      <td className={`${sideName}-cell iv-cell${selectedClass}`}>{percentNullable(side?.implied_volatility ?? null)}</td>
+      <td className={`${sideName}-cell activity-cell${selectedClass}`}>{side?.volume ?? '-'}</td>
+      <td className={`${sideName}-cell activity-cell${selectedClass}`}>{side?.open_interest ?? '-'}</td>
     </>
   )
 }

@@ -89,27 +89,32 @@ function RiskTab({
   stressTone,
 }: Props) {
   return (
-    <div className="tab-grid risk-grid">
-      <div className="panel">
-        <div className="panel-title">Option Greeks</div>
-        <BarChart rows={greekBars} digits={3} />
-        <MetricTable rows={Object.entries(greeks).map(([key, value]) => [key, format(value)])} />
+    <div className="risk-layout">
+      <div className="risk-left">
+        <div className="risk-card-grid">
+          <div className="panel">
+            <div className="panel-title">Option Greeks</div>
+            <BarChart rows={greekBars} digits={3} />
+            <MetricTable rows={Object.entries(greeks).map(([key, value]) => [key, format(value)])} />
+          </div>
+          <div className="panel">
+            <div className="panel-title">Portfolio</div>
+            <MetricTable rows={[
+              ['Long selected option', '10'],
+              ['Short 95% strike put', '-4'],
+              ['Underlying shares', '25'],
+              ['Cash', '-500'],
+              ['Value', `$${format(portfolioValue, 2)}`],
+            ]} />
+          </div>
+          <div className="panel">
+            <div className="panel-title">Portfolio Greeks</div>
+            <MetricTable rows={Object.entries(portfolioGreeks).map(([key, value]) => [key, format(value)])} />
+          </div>
+        </div>
+        <ScenarioGreeksTable rows={scenarioGreekRows} />
       </div>
-      <div className="panel">
-        <div className="panel-title">Portfolio</div>
-        <MetricTable rows={[
-          ['Long selected option', '10'],
-          ['Short 95% strike put', '-4'],
-          ['Underlying shares', '25'],
-          ['Cash', '-500'],
-          ['Value', `$${format(portfolioValue, 2)}`],
-        ]} />
-      </div>
-      <div className="panel">
-        <div className="panel-title">Portfolio Greeks</div>
-        <MetricTable rows={Object.entries(portfolioGreeks).map(([key, value]) => [key, format(value)])} />
-      </div>
-      <div className="panel span-2">
+      <div className="panel risk-stress-panel">
         <div className="panel-title">Stress heatmap and PnL</div>
         <div className="stress-heatmap">
           {stress.map((row) => (
@@ -132,24 +137,29 @@ function RiskTab({
           </tbody>
         </table>
       </div>
-      <div className="panel span-2">
-        <div className="panel-title">Scenario Greeks matrix</div>
-        <table className="data-table">
-          <thead><tr><th>Scenario</th><th>Delta</th><th>Gamma</th><th>Vega</th><th>Theta</th><th>Rho</th></tr></thead>
-          <tbody>
-            {scenarioGreekRows.map((row) => (
-              <tr key={row.label}>
-                <td>{row.label}</td>
-                <td>{format(row.delta, 3)}</td>
-                <td>{format(row.gamma, 4)}</td>
-                <td>{format(row.vega, 3)}</td>
-                <td>{format(row.theta, 3)}</td>
-                <td>{format(row.rho, 3)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    </div>
+  )
+}
+
+function ScenarioGreeksTable({ rows }: { rows: ScenarioGreekRow[] }) {
+  return (
+    <div className="panel scenario-panel">
+      <div className="panel-title">Scenario Greeks matrix</div>
+      <table className="data-table">
+        <thead><tr><th>Scenario</th><th>Delta</th><th>Gamma</th><th>Vega</th><th>Theta</th><th>Rho</th></tr></thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label}>
+              <td>{row.label}</td>
+              <td>{format(row.delta, 3)}</td>
+              <td>{format(row.gamma, 4)}</td>
+              <td>{format(row.vega, 3)}</td>
+              <td>{format(row.theta, 3)}</td>
+              <td>{format(row.rho, 3)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
