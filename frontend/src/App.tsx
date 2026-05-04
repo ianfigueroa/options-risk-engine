@@ -1,6 +1,7 @@
 import { Play, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { AnalyticsTabs } from './AnalyticsTabs'
+import { apiClient } from './apiClient'
 import { OptionChainTable, PayoffChart, type OptionChainLadderRow } from './components'
 import type {
   FormState,
@@ -19,6 +20,14 @@ import type {
 } from './domainTypes'
 import { format, optionalMoney, optionalPercent, percent } from './formatters'
 import { presetStrike, yearsUntilExpiration } from './marketUtils'
+import {
+  minMax,
+  moneynessStatus,
+  resolvePricingVol,
+  stressTone,
+  surfaceExpiries,
+  surfaceStrikes,
+} from './valuationUtils'
 
 type OptionChainResponse = {
   source: string
@@ -28,8 +37,6 @@ type OptionChainResponse = {
   quote_count: number
   rows: OptionChainLadderRow[]
 }
-
-const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
 
 const defaultGreeks: Greeks = { delta: 0, gamma: 0, vega: 0, theta: 0, rho: 0 }
 const defaultModelPrices: ModelPrices = {
@@ -47,28 +54,6 @@ const fallbackHedge: HedgeResult = {
   delta_path: [0.54, 0.56, 0.51, 0.59, 0.58],
 }
 
-async function postJson<T>(path: string, payload: unknown): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({ detail: response.statusText }))
-    throw new Error(typeof body.detail === 'string' ? body.detail : 'request failed')
-  }
-  return (await response.json()) as T
-}
-
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`)
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({ detail: response.statusText }))
-    throw new Error(typeof body.detail === 'string' ? body.detail : 'request failed')
-  }
-  return (await response.json()) as T
-}
-
 function optionMarketPayload(form: FormState, volatility = form.volatility) {
   return {
     option: {
@@ -84,52 +69,6 @@ function optionMarketPayload(form: FormState, volatility = form.volatility) {
       volatility,
     },
   }
-}
-
-function resolvePricingVol(
-  source: VolMarkSource,
-  values: { manual: number; market: number; chain?: number | null; surface: number },
-) {
-  const candidates: Record<VolMarkSource, number | null | undefined> = {
-    manual: values.manual,
-    market: values.market,
-    chain: values.chain,
-    surface: values.surface,
-  }
-  const selected = candidates[source]
-  return typeof selected === 'number' && Number.isFinite(selected) && selected >= 0 ? selected : values.manual
-}
-
-function minMax(values: number[]) {
-  if (values.length === 0) return { min: 0, max: 0 }
-  return { min: Math.min(...values), max: Math.max(...values) }
-}
-
-function stressTone(pnl: number, maxAbsPnl: number) {
-  const strength = Math.min(1, Math.abs(pnl) / Math.max(maxAbsPnl, 1))
-  if (pnl > 0) return `rgba(68, 139, 84, ${0.18 + strength * 0.42})`
-  if (pnl < 0) return `rgba(160, 73, 73, ${0.18 + strength * 0.42})`
-  return '#20242a'
-}
-
-function moneynessStatus(form: FormState) {
-  const distance = form.spot - form.strike
-  const relativeDistance = Math.abs(distance) / Math.max(form.strike, 1)
-  if (relativeDistance <= 0.005) return 'ATM'
-  if (form.kind === 'call') return distance > 0 ? 'ITM' : 'OTM'
-  return distance < 0 ? 'ITM' : 'OTM'
-}
-
-function surfaceStrikes(spot: number, strike: number) {
-  const low = Math.max(0.01, Math.min(spot, strike) * 0.85)
-  const high = Math.max(spot, strike) * 1.15
-  const step = (high - low) / 4
-  return Array.from({ length: 5 }, (_, index) => Number((low + step * index).toFixed(6)))
-}
-
-function surfaceExpiries(expiry: number) {
-  return Array.from(new Set([0.25, 0.5, 1, 2, Math.max(0.01, expiry)].map((value) => Number(value.toFixed(6)))))
-    .sort((left, right) => left - right)
 }
 
 export default function App() {
@@ -185,7 +124,7 @@ export default function App() {
       let nextSurfaceVol = Number.NaN
       try {
         const surfaceResponse = surfaceSource === 'live'
-          ? await getJson<SurfaceResult>(`/live-vol-surface/${encodeURIComponent(ticker)}?${new URLSearchParams({
+          ? await apiClient.getJson<SurfaceResult>(`/live-vol-surface/${encodeURIComponent(ticker)}?${new URLSearchParams({
             kind: form.kind,
             spot: String(form.spot),
             rate: String(form.rate),
@@ -195,7 +134,7 @@ export default function App() {
             max_expirations: '4',
             strike_window: '0.35',
           })}`)
-          : await postJson<SurfaceResult>('/vol-surface', {
+          : await apiClient.postJson<SurfaceResult>('/vol-surface', {
             spot: form.spot,
             expiries: surfaceExpiries(form.expiry),
             strikes: surfaceStrikes(form.spot, form.strike),
@@ -215,7 +154,7 @@ export default function App() {
       }
 
       const seedPayload = optionMarketPayload(form)
-      const manualIvResponse = await postJson<{ implied_volatility: number }>('/implied-vol', {
+      const manualIvResponse = await apiClient.postJson<{ implied_volatility: number }>('/implied-vol', {
         ...seedPayload,
         option_price: marketPrice,
       }).catch(() => ({ implied_volatility: Number.NaN }))
@@ -226,13 +165,13 @@ export default function App() {
         surface: nextSurfaceVol,
       })
       const basePayload = optionMarketPayload(form, selectedVol)
-      const priceResponse = await postJson<{ price: number }>('/price', basePayload)
-      const greeksResponse = await postJson<Greeks>('/greeks', basePayload)
-      const ivResponse = await postJson<{ implied_volatility: number }>('/implied-vol', {
+      const priceResponse = await apiClient.postJson<{ price: number }>('/price', basePayload)
+      const greeksResponse = await apiClient.postJson<Greeks>('/greeks', basePayload)
+      const ivResponse = await apiClient.postJson<{ implied_volatility: number }>('/implied-vol', {
         ...basePayload,
         option_price: priceResponse.price,
       })
-      const modelResponse = await postJson<ModelPrices>('/model-prices', basePayload)
+      const modelResponse = await apiClient.postJson<ModelPrices>('/model-prices', basePayload)
       const portfolioPayload = {
         positions: [
           { option: basePayload.option, quantity: 10 },
@@ -242,10 +181,10 @@ export default function App() {
         cash: -500,
         market: basePayload.market,
       }
-      const portfolioResponse = await postJson<{ value: number; greeks: Greeks }>('/portfolio-risk', portfolioPayload)
-      const stressResponse = await postJson<{ scenarios: StressRow[] }>('/stress-test', portfolioPayload)
-      const scenarioGreeksResponse = await postJson<{ scenarios: ScenarioGreekRow[] }>('/scenario-greeks', portfolioPayload)
-      const hedgeResponse = await postJson<HedgeResult>('/hedging-simulation', {
+      const portfolioResponse = await apiClient.postJson<{ value: number; greeks: Greeks }>('/portfolio-risk', portfolioPayload)
+      const stressResponse = await apiClient.postJson<{ scenarios: StressRow[] }>('/stress-test', portfolioPayload)
+      const scenarioGreeksResponse = await apiClient.postJson<{ scenarios: ScenarioGreekRow[] }>('/scenario-greeks', portfolioPayload)
+      const hedgeResponse = await apiClient.postJson<HedgeResult>('/hedging-simulation', {
         ...basePayload,
         config: { steps: 60, rebalance_interval: 2, seed: 12, transaction_cost_rate: 0.001 },
       })
@@ -288,7 +227,7 @@ export default function App() {
         expiry_years: String(expiry),
         strike_window: '0.20',
       })
-      const chain = await getJson<OptionChainResponse>(`/option-chain-ladder/${encodeURIComponent(symbol)}?${query}`)
+      const chain = await apiClient.getJson<OptionChainResponse>(`/option-chain-ladder/${encodeURIComponent(symbol)}?${query}`)
       setOptionChainRows(chain.rows)
       setOptionChainExpiration(chain.expiration)
       setOptionChainExpiry(chain.expiry_years)
@@ -320,7 +259,7 @@ export default function App() {
     setMarketLoading(true)
     setMarketStatus('Loading quote')
     try {
-      const snapshot = await getJson<MarketSnapshot>(`/market-snapshots/${encodeURIComponent(symbol)}`)
+      const snapshot = await apiClient.getJson<MarketSnapshot>(`/market-snapshots/${encodeURIComponent(symbol)}`)
       setMarketSnapshot(snapshot)
       setTicker(snapshot.ticker)
       const liveSpot = Number(snapshot.price.toFixed(4))
@@ -330,7 +269,7 @@ export default function App() {
         expiry_years: String(form.expiry),
       })
       try {
-        const quote = await getJson<LiveOptionQuote>(`/option-quotes/${encodeURIComponent(symbol)}?${query}`)
+        const quote = await apiClient.getJson<LiveOptionQuote>(`/option-quotes/${encodeURIComponent(symbol)}?${query}`)
         const livePrice = quote.mid ?? quote.last_price
         const liveExpiry = yearsUntilExpiration(quote.expiration)
         setLiveOptionQuote(quote)

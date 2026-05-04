@@ -52,7 +52,7 @@ Run the dashboard:
 
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -60,6 +60,15 @@ Open:
 
 - API: `http://127.0.0.1:8000`
 - Dashboard: `http://127.0.0.1:5173`
+
+Run the frontend checks:
+
+```powershell
+cd frontend
+npm ci
+npm run test:coverage
+npm run build
+```
 
 ## Docker
 
@@ -119,23 +128,6 @@ Request bodies and query parameters are validated with Pydantic. Domain errors,
 such as impossible implied-volatility bounds, come back as clear HTTP 400
 responses.
 
-## Core math
-
-Black-Scholes uses the standard continuous-dividend form:
-
-```text
-C = S e^{-qT} N(d1) - K e^{-rT} N(d2)
-P = K e^{-rT} N(-d2) - S e^{-qT} N(-d1)
-d1 = [ln(S/K) + (r - q + 0.5 sigma^2)T] / (sigma sqrt(T))
-d2 = d1 - sigma sqrt(T)
-```
-
-The IV solver validates no-arbitrage bounds, starts with Newton-Raphson using
-analytical vega, and falls back to bisection if Newton becomes unstable.
-
-Portfolio stress tests use full repricing, not just Greek approximations. Greeks
-are still shown because they explain the shape of the risk.
-
 ## Benchmarks
 
 Measured locally on 2026-05-04:
@@ -148,6 +140,22 @@ Measured locally on 2026-05-04:
 | Python Black-Scholes | 100,000 options | 223.526 ms |
 
 See `docs/benchmarks.md` for the benchmark commands and Monte Carlo timings.
+
+## Quality gates
+
+The repo includes GitHub Actions for the Python/API layer, C++ core, and React
+dashboard. The main local verification commands are:
+
+```powershell
+py -3 -m ruff check api python
+py -3 -m pytest --cov=python/options_lab --cov=api --cov-report=term-missing --cov-fail-under=80
+cmake --build build
+ctest --test-dir build --output-on-failure
+cd frontend
+npm audit --audit-level=high
+npm run test:coverage
+npm run build
+```
 
 ## Current scope
 

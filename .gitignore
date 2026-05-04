@@ -4,11 +4,13 @@ dist/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/coverage/
 .env
 .env.*
 !.env.example
@@ -17,4 +19,5 @@ frontend/.vite/
 *.so
 *.dll
 *.dylib
-
+docs/stuff.md
+docs/important_stuff.md
