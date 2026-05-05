@@ -89,4 +89,12 @@ This report uses deterministic seeded examples, not a full statistical Monte Car
 
 ## Conclusion
 
-Discrete delta hedging is most stable when realized dynamics match the hedge model, transaction costs are low, and rebalancing is frequent. Volatility misspecification and jumps materially degrade replication. A production research extension should run thousands of paths per experiment and report quantiles, expected shortfall of hedging error, and turnover-adjusted performance.
+Discrete delta hedging is most stable when realized dynamics match the hedge model, transaction costs are low, and rebalancing is frequent. Volatility misspecification and jumps materially degrade replication.
+
+A path-distribution helper (`simulate_delta_hedge_paths`) is now exposed on
+the analytics layer, which aggregates many seeded paths into mean, std, and
+p05/p50/p95 quantiles of replication error plus average transaction cost.
+That turns each row of the table above from an anecdote into a distribution
+without changing the underlying model. A future research extension should
+also report turnover-adjusted performance and tail risk (CVaR of error)
+under jump and stochastic-vol regimes.

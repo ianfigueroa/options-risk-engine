@@ -29,39 +29,16 @@ target_include_directories(options_core
 
 target_compile_features(options_core PUBLIC cxx_std_20)
 
-add_executable(options_cpp_tests cpp/tests/test_black_scholes.cpp)
-target_link_libraries(options_cpp_tests PRIVATE options_core)
-
-enable_testing()
-add_test(NAME options_cpp_tests COMMAND options_cpp_tests)
-
-add_executable(options_greeks_tests cpp/tests/test_greeks.cpp)
-target_link_libraries(options_greeks_tests PRIVATE options_core)
-add_test(NAME options_greeks_tests COMMAND options_greeks_tests)
-
-add_executable(options_iv_tests cpp/tests/test_implied_vol.cpp)
-target_link_libraries(options_iv_tests PRIVATE options_core)
-add_test(NAME options_iv_tests COMMAND options_iv_tests)
-
-add_executable(options_portfolio_tests cpp/tests/test_portfolio_risk.cpp)
-target_link_libraries(options_portfolio_tests PRIVATE options_core)
-add_test(NAME options_portfolio_tests COMMAND options_portfolio_tests)
-
-add_executable(options_numerical_tests cpp/tests/test_numerical_models.cpp)
-target_link_libraries(options_numerical_tests PRIVATE options_core)
-add_test(NAME options_numerical_tests COMMAND options_numerical_tests)
-
-add_executable(options_surface_tests cpp/tests/test_vol_surface.cpp)
-target_link_libraries(options_surface_tests PRIVATE options_core)
-add_test(NAME options_surface_tests COMMAND options_surface_tests)
-
-add_executable(options_hedging_tests cpp/tests/test_hedging_simulator.cpp)
-target_link_libraries(options_hedging_tests PRIVATE options_core)
-add_test(NAME options_hedging_tests COMMAND options_hedging_tests)
-
-add_executable(options_advanced_vol_tests cpp/tests/test_advanced_vol_models.cpp)
-target_link_libraries(options_advanced_vol_tests PRIVATE options_core)
-add_test(NAME options_advanced_vol_tests COMMAND options_advanced_vol_tests)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/cpp/tests/test_black_scholes.cpp)
+  enable_testing()
+  foreach(test_target IN ITEMS
+      black_scholes greeks implied_vol portfolio_risk
+      numerical_models vol_surface hedging_simulator advanced_vol_models)
+    add_executable(options_${test_target}_tests cpp/tests/test_${test_target}.cpp)
+    target_link_libraries(options_${test_target}_tests PRIVATE options_core)
+    add_test(NAME options_${test_target}_tests COMMAND options_${test_target}_tests)
+  endforeach()
+endif()
 
 if(OPTIONS_BUILD_BENCHMARKS)
   add_executable(price_many_options cpp/benchmarks/price_many_options.cpp)

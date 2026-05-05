@@ -15,15 +15,13 @@ It then runs Newton-Raphson using analytical vega. If vega is too small or the N
 
 Analytical Greeks are computed for Black-Scholes. Vega and rho are per unit volatility/rate. Theta is calendar theta, equivalent to `-dV/dT`.
 
-Finite-difference C++ tests compare delta, gamma, vega, theta, and rho against central differences.
-
 ## Interpolation
 
 The C++ and Python `VolSurface` classes use bilinear interpolation over strike and expiry. The surface requires a complete rectangular grid around the query point.
 
 ## Randomness
 
-Monte Carlo and hedging simulation use deterministic seeds for repeatable tests. Hedging paths can include Bernoulli jump arrivals with lognormal jump sizes.
+Monte Carlo and hedging simulation use deterministic seeds for reproducible runs. Hedging paths can include Bernoulli jump arrivals with lognormal jump sizes. The hedging layer also exposes a path-distribution helper that runs many seeded paths and returns aggregated mean / std / quantile / cost statistics.
 
 ## Advanced Volatility Simulation
 
