@@ -35,7 +35,6 @@ production trading system.
 - `python/options_lab/`: Python analytics package and optional native binding.
 - `api/`: FastAPI app.
 - `frontend/`: React and TypeScript dashboard.
-- `notebooks/`: Research notebooks.
 - `docs/`: Architecture, model, method, and benchmark notes.
 - `reports/`: Research output.
 

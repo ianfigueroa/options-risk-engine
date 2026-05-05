@@ -85,10 +85,10 @@ $$d_1 = \frac{\ln(S/K) + (r - q + \tfrac12 \sigma^2)\,T}{\sigma\sqrt{T}},\quad d
 
 `N` is the standard normal CDF.
 
-**Sanity checks the code uses:**
+**Sanity checks the code relies on:**
 
-- *Put-call parity* — $C - P = S\,e^{-qT} - K\,e^{-rT}$. The unit tests assert
-  this to floating-point tolerance for arbitrary inputs.
+- *Put-call parity* — $C - P = S\,e^{-qT} - K\,e^{-rT}$ holds to
+  floating-point tolerance for arbitrary inputs.
 - *Boundary behaviour* — call $\to (S - K\,e^{-rT})^+$ as $\sigma \to 0$ for
   ITM, and $\to 0$ for OTM.
 - *Intrinsic vs. time value* — the dashboard separates these because for an
@@ -212,11 +212,16 @@ grid edge.
 
 - $\sigma > 0$
 - bid $\le$ ask
-- IV not absurdly far from neighbouring strikes (z-score gate)
+- IV not absurdly far from neighbouring strikes
+- *Calendar arbitrage* — total variance $w(k,T) = \sigma(k,T)^2 \cdot T$ should
+  be monotone non-decreasing in $T$ for each strike. Violations are flagged.
+- *Butterfly arbitrage* (coarse heuristic) — for any three adjacent strikes
+  on a slice, the middle IV should not sit substantially below the linear
+  interpolation of its wings. This is a proxy for negative implied density;
+  a calibrated SVI fit would express the same constraint analytically.
 
-A production extension would calibrate SVI per slice, enforce *no calendar
-arbitrage* (totals variance $w(k,T)$ monotone in $T$) and *no butterfly
-arbitrage* ($g(k) \ge 0$), and re-fit for each new snapshot.
+A production extension would calibrate SVI per slice, enforce no-arbitrage
+constraints exactly, and re-fit for each new snapshot.
 
 ---
 
@@ -255,13 +260,19 @@ A short-call delta-hedging experiment. Per step:
 
 At expiry, replication PnL = (hedge account terminal) − (option terminal
 payoff). Under continuous rebalancing, no jumps, no costs, and correct $\sigma$,
-this should be zero (Black-Scholes replication theorem). The notebook
-sweeps the four ways replication breaks:
+this should be zero (Black-Scholes replication theorem). The simulator lets
+you measure the four ways replication breaks:
 
 - Wrong $\sigma$ — biased delta, persistent error.
 - Discrete rebalancing — gamma-PnL leakage, scales with $\sqrt{\Delta t}$.
 - Transaction costs — turnover-linked drag.
 - Jumps — uncovered exposure, fat-tailed error distribution.
+
+A `simulate_delta_hedge_paths` helper aggregates many seeded paths and
+returns the distribution of replication error (mean, std, p05/p50/p95,
+worst/best) plus average transaction costs. That is what you actually want
+when assessing a hedging program — a single seeded path is anecdote, the
+distribution is data.
 
 ---
 
@@ -290,8 +301,8 @@ cpp/src/BlackScholes.cpp            actual numerics
 ```
 
 If the C++ extension fails to import (no compiler, mismatched ABI), the
-Python wrapper transparently falls back to its own implementation. Tests
-exercise both branches via `python/tests/test_python_fallback.py`.
+Python wrapper transparently falls back to its own implementation, so the
+project still runs end-to-end without a working toolchain.
 
 ---
 
@@ -310,29 +321,14 @@ proper market-data subscription.
 
 ---
 
-## 6. Testing strategy
-
-| Layer | Framework | What it covers |
-|-------|-----------|----------------|
-| C++ core | GoogleTest | numerical correctness, parity, convergence |
-| Python lib | pytest | API parity with C++, fallback behavior |
-| API | pytest + httpx | request/response contracts, validation, caching |
-| Frontend | Vitest | formatters, valuation utils, API client |
-
-Numerical tests pin specific reference values so silent regressions show up
-fast. Convergence tests assert error decreases with $N$ on Monte Carlo and
-binomial pricers (not just that some arbitrary value is within ε of BS).
-
----
-
-## 7. Things that would make this a real system
+## 6. Things that would make this a real system
 
 - Calibrate SVI / SABR / Heston to listed chains and *cache the parameters*.
 - Replace the parametric local vol with a proper Dupire fit.
 - Move the surface to log-strike + total-variance space and enforce static
   arbitrage explicitly.
-- Add a proper backtest harness for the hedging simulator (paths × seeds × cost
-  regimes), and report error quantiles.
+- Drive the hedging simulator from a block-bootstrap of historical returns
+  rather than GBM, to preserve the empirical jump and clustering structure.
 - Replace Yahoo with a real market-data adapter (Polygon / Tradier / IBKR).
 - Streaming surface updates (WebSocket from API → frontend) instead of polled
   REST.

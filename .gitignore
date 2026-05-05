@@ -27,3 +27,15 @@ frontend/test-results/
 *.dylib
 docs/stuff.md
 docs/important_stuff.md
+
+# notebooks (research scratch, kept locally only)
+notebooks/
+
+# tests (kept locally only)
+api/tests/
+python/tests/
+cpp/tests/
+frontend/src/*.test.ts
+frontend/src/*.test.tsx
+**/test_*.py
+**/test_*.cpp
