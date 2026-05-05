@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import math
 import random
+import statistics
 from dataclasses import replace
 
 from options_lab.analytics.pricing import black_scholes_greeks, black_scholes_price
-from options_lab.analytics.types import HedgingConfig, HedgingResult, MarketData, OptionContract
+from options_lab.analytics.types import (
+    HedgingConfig,
+    HedgingDistribution,
+    HedgingResult,
+    MarketData,
+    OptionContract,
+)
 
 
 def _intrinsic(contract: OptionContract, spot: float) -> float:
@@ -113,5 +120,58 @@ def simulate_delta_hedge(
         transaction_costs=transaction_costs,
         spot_path=spot_path,
         delta_path=delta_path,
+    )
+
+
+def _quantile(values: list[float], q: float) -> float:
+    if not values:
+        raise ValueError("cannot compute quantile of empty sample")
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    position = q * (len(ordered) - 1)
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return ordered[int(position)]
+    weight = position - lower
+    return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+
+
+def simulate_delta_hedge_paths(
+    contract: OptionContract,
+    market: MarketData,
+    config: HedgingConfig | None = None,
+    paths: int = 200,
+) -> HedgingDistribution:
+    """Run ``simulate_delta_hedge`` ``paths`` times and aggregate the
+    distribution of replication errors.
+
+    Each path uses ``config.seed + i`` so the result is reproducible while
+    still covering distinct GBM realisations.  This is the function notebook
+    05 wants when it asks "what does the *distribution* of hedging error look
+    like" rather than "what was the error on one seeded path".
+    """
+    if paths <= 0:
+        raise ValueError("paths must be positive")
+    base = config or HedgingConfig()
+    errors: list[float] = []
+    costs: list[float] = []
+    for offset in range(paths):
+        path_config = replace(base, seed=base.seed + offset)
+        result = simulate_delta_hedge(contract, market, path_config)
+        errors.append(result.hedging_error)
+        costs.append(result.transaction_costs)
+    std = statistics.pstdev(errors) if len(errors) > 1 else 0.0
+    return HedgingDistribution(
+        paths=paths,
+        mean_error=statistics.fmean(errors),
+        std_error=std,
+        p05_error=_quantile(errors, 0.05),
+        p50_error=_quantile(errors, 0.50),
+        p95_error=_quantile(errors, 0.95),
+        mean_cost=statistics.fmean(costs),
+        worst_error=min(errors),
+        best_error=max(errors),
     )
 

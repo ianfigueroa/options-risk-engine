@@ -157,3 +157,40 @@ def test_cpp_core_status_is_exposed():
 
     assert set(status) == {"available", "backend"}
     assert status["backend"] in {"cpp", "python"}
+
+
+def test_hedge_distribution_summarises_many_paths():
+    contract = option("call")
+    md = market(0.2)
+    config = ol.HedgingConfig(
+        steps=64,
+        rebalance_interval=1,
+        seed=0,
+        transaction_cost_rate=0.0005,
+    )
+
+    distribution = ol.simulate_delta_hedge_paths(contract, md, config, paths=24)
+
+    assert distribution.paths == 24
+    assert distribution.std_error >= 0.0
+    assert distribution.p05_error <= distribution.p50_error <= distribution.p95_error
+    assert distribution.worst_error <= distribution.best_error
+    assert distribution.mean_cost > 0.0
+
+
+def test_hedge_distribution_rejects_zero_paths():
+    with pytest.raises(ValueError):
+        ol.simulate_delta_hedge_paths(option(), market(), paths=0)
+
+
+def test_butterfly_arb_warning_fires_on_concave_smile():
+    quotes = [
+        ol.VolQuote(strike=90, expiry=1.0, implied_vol=0.40, bid=1.0, ask=1.1),
+        ol.VolQuote(strike=100, expiry=1.0, implied_vol=0.10, bid=1.0, ask=1.1),
+        ol.VolQuote(strike=110, expiry=1.0, implied_vol=0.40, bid=1.0, ask=1.1),
+    ]
+    surface = ol.VolSurface(quotes)
+
+    warnings = surface.arbitrage_warnings()
+
+    assert any("butterfly" in w for w in warnings)

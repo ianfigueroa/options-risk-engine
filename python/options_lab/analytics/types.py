@@ -105,6 +105,19 @@ class HedgingResult:
 
 
 @dataclass(frozen=True)
+class HedgingDistribution:
+    paths: int
+    mean_error: float
+    std_error: float
+    p05_error: float
+    p50_error: float
+    p95_error: float
+    mean_cost: float
+    worst_error: float
+    best_error: float
+
+
+@dataclass(frozen=True)
 class PathConfig:
     paths: int = 10000
     steps: int = 252

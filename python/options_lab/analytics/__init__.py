@@ -1,6 +1,6 @@
 """High-level analytics API."""
 
-from options_lab.analytics.hedging import simulate_delta_hedge
+from options_lab.analytics.hedging import simulate_delta_hedge, simulate_delta_hedge_paths
 from options_lab.analytics.portfolio import portfolio_greeks, portfolio_value, standard_stress_tests
 from options_lab.analytics.pricing import (
     binomial_tree_price,
@@ -18,6 +18,7 @@ from options_lab.analytics.surface import VolSurface, synthetic_option_chain
 from options_lab.analytics.types import (
     Greeks,
     HedgingConfig,
+    HedgingDistribution,
     HedgingResult,
     HestonParams,
     LocalVolModel,
@@ -35,6 +36,7 @@ from options_lab.calibration import load_option_chain_csv
 __all__ = [
     "Greeks",
     "HedgingConfig",
+    "HedgingDistribution",
     "HedgingResult",
     "HestonParams",
     "LocalVolModel",
@@ -60,6 +62,7 @@ __all__ = [
     "portfolio_value",
     "scenario_greeks",
     "simulate_delta_hedge",
+    "simulate_delta_hedge_paths",
     "standard_stress_tests",
     "stochastic_vol_monte_carlo_price",
     "synthetic_option_chain",

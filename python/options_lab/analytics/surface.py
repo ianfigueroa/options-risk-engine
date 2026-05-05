@@ -60,6 +60,12 @@ class VolSurface:
         return warnings
 
     def arbitrage_warnings(self) -> list[str]:
+        warnings: list[str] = []
+        warnings.extend(self._calendar_warnings())
+        warnings.extend(self._butterfly_warnings())
+        return warnings
+
+    def _calendar_warnings(self) -> list[str]:
         by_strike: dict[float, list[VolQuote]] = defaultdict(list)
         for quote in self.quotes:
             by_strike[quote.strike].append(quote)
@@ -71,6 +77,36 @@ class VolSurface:
                 if current + 1e-12 < total_variance:
                     warnings.append(f"calendar total variance decreases for strike {strike}")
                 total_variance = current
+        return warnings
+
+    def _butterfly_warnings(self) -> list[str]:
+        """Flag slices where the smile is concave-down across three adjacent
+        strikes — a coarse proxy for negative butterfly density.
+
+        A clean implied-density slice should have implied vol that produces
+        a non-negative second derivative of the call price w.r.t. strike.
+        At the *vol* level, that translates to a smile that does not curve
+        sharply downward in the middle relative to its wings.  This check is
+        a diagnostic, not a calibrated arb test.
+        """
+        by_expiry: dict[float, list[VolQuote]] = defaultdict(list)
+        for quote in self.quotes:
+            by_expiry[quote.expiry].append(quote)
+        warnings: list[str] = []
+        for expiry, quotes in by_expiry.items():
+            ordered = sorted(quotes, key=lambda item: item.strike)
+            for left, mid, right in zip(ordered, ordered[1:], ordered[2:], strict=False):
+                spacing_left = mid.strike - left.strike
+                spacing_right = right.strike - mid.strike
+                if spacing_left <= 0.0 or spacing_right <= 0.0:
+                    continue
+                # Linear interpolation of the wing IVs at the middle strike.
+                weight = spacing_left / (spacing_left + spacing_right)
+                interpolated = left.implied_vol + weight * (right.implied_vol - left.implied_vol)
+                if mid.implied_vol + 1e-9 < interpolated - 0.05:
+                    warnings.append(
+                        f"butterfly concavity at strike {mid.strike} expiry {expiry}"
+                    )
         return warnings
 
 
