@@ -43,6 +43,13 @@ endif()
 if(OPTIONS_BUILD_BENCHMARKS)
   add_executable(price_many_options cpp/benchmarks/price_many_options.cpp)
   target_link_libraries(price_many_options PRIVATE options_core)
+
+  # Convergence check vs Black-Scholes. Doubles as a CTest correctness test:
+  # it returns non-zero if any pricer drifts past tolerance.
+  add_executable(convergence_vs_bs cpp/benchmarks/convergence_vs_bs.cpp)
+  target_link_libraries(convergence_vs_bs PRIVATE options_core)
+  enable_testing()
+  add_test(NAME convergence_vs_bs COMMAND convergence_vs_bs)
 endif()
 
 if(OPTIONS_BUILD_PYTHON)
