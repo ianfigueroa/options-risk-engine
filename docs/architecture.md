@@ -2,7 +2,7 @@
 
 ## System Shape
 
-The project is split into four deployable layers:
+The project is split into four layers:
 
 - `cpp/`: C++20 analytics core for pricing, Greeks, implied volatility, surfaces, portfolio risk, stress testing, Monte Carlo, binomial trees, and hedging simulation.
 - `python/options_lab/`: Python package for research workflows, plotting, and service integration. It can use the pybind11 extension when built and has pure-Python parity functions for portability.

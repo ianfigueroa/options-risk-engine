@@ -43,7 +43,7 @@ Measured against Black-Scholes across 110 priced contracts:
 | Binomial (2000 steps) | ~0.07% | ~0.01% | max < 0.25% |
 | Monte-Carlo (1M paths, antithetic) | ~0.44% | ~0.09% | avg < 0.25%, max < 0.50% |
 
-The Monte-Carlo max sits above 0.25% on far-OTM contracts — that tail is sampling
+The Monte-Carlo max sits above 0.25% on far-OTM contracts - that tail is sampling
 noise at 1M paths, not pricing bias, so the test bounds the MC *average* at 0.25%
 and its worst case at 0.50%.
 

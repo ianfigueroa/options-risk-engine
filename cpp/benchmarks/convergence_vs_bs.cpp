@@ -66,7 +66,7 @@ int main() {
     std::printf("MonteCarlo(%zu paths) vs BS:  max=%.4f%%  avg=%.4f%%\n",
                 mc.paths, mc_max, mc_avg);
 
-    // Thresholds — see header comment.
+    // Thresholds - see header comment.
     const double kBinMaxTol = 0.25;  // %
     const double kMcAvgTol = 0.25;   // %
     const double kMcMaxTol = 0.50;   // %

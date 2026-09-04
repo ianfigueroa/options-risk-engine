@@ -13,8 +13,8 @@ The project has four main parts:
 - A React dashboard for exploring trades, market quotes, option chains, stress
   results, surfaces, and hedging paths.
 
-It is meant for learning, demos, and portfolio-style exploration. It is not a
-production trading system.
+I built it to learn the models and see how they behave side by side. It is not
+a trading system, and the Yahoo data it pulls is not exchange-grade.
 
 ## What You Can Do
 
@@ -46,10 +46,10 @@ Install the Python/API layer:
 py -3 -m pip install -e .[dev]
 ```
 
-Start the API:
+Start the API from the repo root:
 
 ```powershell
-py -3 -m uvicorn --app-dir C:\Users\Ianfi\Options_Risk_Engine api.main:app --host 127.0.0.1 --port 8000
+py -3 -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
 Start the dashboard:
@@ -91,8 +91,6 @@ That starts:
 ## Live Market Data
 
 Live stock and option-chain data comes from Yahoo Finance through `yfinance`.
-That is useful for demos and exploration, but it is not exchange-grade market
-data.
 
 The API caches and paces Yahoo requests by default:
 
@@ -113,7 +111,6 @@ $env:OPTIONS_OPTION_CHAIN_TTL_SECONDS="300"
 ## Notes
 
 - The dashboard defaults to European options with no discrete dividends.
-- Yahoo Finance data is for exploration, not trading.
 - Local volatility is parametric rather than a full Dupire calibration.
 - Stochastic volatility uses simulation rather than a calibrated Heston pricer.
 - Static-arbitrage checks are basic diagnostics, not a full surface-cleaning

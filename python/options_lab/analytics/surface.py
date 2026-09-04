@@ -81,7 +81,7 @@ class VolSurface:
 
     def _butterfly_warnings(self) -> list[str]:
         """Flag slices where the smile is concave-down across three adjacent
-        strikes — a coarse proxy for negative butterfly density.
+        strikes - a coarse proxy for negative butterfly density.
 
         A clean implied-density slice should have implied vol that produces
         a non-negative second derivative of the call price w.r.t. strike.
