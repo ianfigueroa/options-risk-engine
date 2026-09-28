@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import Any, Literal, TypeVar
 
@@ -30,9 +31,19 @@ from api.schemas import (
 from options_lab import analytics as ol
 
 app = FastAPI(title="Options Risk Engine API", version="0.1.0")
+
+# Allowed CORS origins. Defaults to local dev; in production set
+# OPTIONS_CORS_ORIGINS to a comma-separated list of deployed frontend URLs,
+# e.g. "https://options-risk-engine.vercel.app".
+_default_origins = "http://127.0.0.1:5173,http://localhost:5173"
+_cors_origins = [
+    origin.strip()
+    for origin in os.getenv("OPTIONS_CORS_ORIGINS", _default_origins).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_origins=_cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["content-type"],
